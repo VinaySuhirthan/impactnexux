@@ -63,24 +63,52 @@ body {
 .logo {
   display: flex;
   align-items: center;
-  gap: 12px;
-  font-weight: 700;
-  font-size: 20px;
+  gap: 14px;
+  font-weight: 800;
+  font-size: 22px;
   color: var(--text);
   text-decoration: none;
+  letter-spacing: -0.5px;
+  transition: var(--transition);
+}
+
+.logo:hover {
+  transform: translateY(-2px);
 }
 
 .logo-icon {
-  width: 40px;
-  height: 40px;
-  border-radius: 10px;
-  background: linear-gradient(135deg, var(--brand), #0056b3);
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #007bff 0%, #0056b3 50%, #004085 100%);
   display: flex;
   align-items: center;
   justify-content: center;
   color: white;
-  font-size: 18px;
-  font-weight: 600;
+  font-size: 24px;
+  font-weight: 700;
+  box-shadow: 0 8px 24px rgba(0, 123, 255, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  position: relative;
+  overflow: hidden;
+}
+
+.logo-icon::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0) 100%);
+  pointer-events: none;
+  border-radius: 14px;
+}
+
+.logo-icon svg {
+  width: 28px;
+  height: 28px;
+  position: relative;
+  z-index: 1;
 }
 
 .topbar-right {
@@ -305,6 +333,54 @@ body {
 }
 
 #ownInput::placeholder {
+  color: var(--text-muted);
+}
+
+/* Contact Fields */
+.contact-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.contact-field {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 20px;
+  border-radius: var(--radius);
+  background: var(--card);
+  border: 2px solid var(--border);
+  transition: var(--transition);
+}
+
+.contact-field:focus-within {
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px rgba(0,123,255,0.1);
+}
+
+.contact-icon {
+  font-size: 24px;
+  min-width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.contact-field input {
+  flex: 1;
+  background: none;
+  border: none;
+  outline: none;
+  font-family: inherit;
+  font-size: 15px;
+  color: var(--text);
+}
+
+.contact-field input::placeholder {
   color: var(--text-muted);
 }
 
@@ -591,8 +667,15 @@ body {
 <!-- TOPBAR -->
 <header class="topbar">
   <div class="logo">
-    <div class="logo-icon">✦</div>
-    AdGPT
+    <div class="logo-icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+        <circle cx="9" cy="10" r="1" fill="currentColor"></circle>
+        <circle cx="12" cy="10" r="1" fill="currentColor"></circle>
+        <circle cx="15" cy="10" r="1" fill="currentColor"></circle>
+      </svg>
+    </div>
+    <span>AdGPT</span>
   </div>
   <div class="topbar-right">
     <div class="status-dot" id="statusPill">
@@ -642,6 +725,9 @@ body {
 
     <!-- Actions -->
     <div class="actions-row">
+      <button class="btn btn-ghost" id="backBtn" onclick="onBack()" style="display:none">
+        ← Back
+      </button>
       <button class="btn btn-primary" id="nextBtn" onclick="onNext()">
         Next Question →
       </button>
@@ -681,8 +767,10 @@ const state = {
   answers: {},
   current: null,
   selected: "",
-  totalSteps: 9,
+  totalSteps: 6,
   mode: "question", // question | blocked | generate | generating | done
+  history: [], // Track order of answered fields for back button
+  contactValues: {}, // Store phone, email, whatsapp values temporarily
 };
 
 // DOM refs
@@ -695,6 +783,7 @@ const optionsGrid   = document.getElementById("optionsGrid");
 const ownInput      = document.getElementById("ownInput");
 const errBanner     = document.getElementById("errBanner");
 const doneBanner    = document.getElementById("doneBanner");
+const backBtn       = document.getElementById("backBtn");
 const nextBtn       = document.getElementById("nextBtn");
 const retryBtn      = document.getElementById("retryBtn");
 const briefList     = document.getElementById("briefList");
@@ -761,6 +850,47 @@ function renderOptions(opts) {
   });
 }
 
+function renderContactFields() {
+  optionsGrid.innerHTML = "";
+  const contactGrid = document.createElement("div");
+  contactGrid.className = "contact-grid";
+  contactGrid.id = "contactGrid";
+  
+  const contacts = [
+    { id: "phone", icon: "📱", label: "Phone", placeholder: "Enter phone number" },
+    { id: "email", icon: "📧", label: "Email", placeholder: "Enter email address" },
+    { id: "whatsapp", icon: "💬", label: "WhatsApp", placeholder: "Enter WhatsApp number" }
+  ];
+  
+  contacts.forEach(contact => {
+    const field = document.createElement("div");
+    field.className = "contact-field";
+    
+    const icon = document.createElement("span");
+    icon.className = "contact-icon";
+    icon.textContent = contact.icon;
+    
+    const input = document.createElement("input");
+    input.type = contact.id === "email" ? "email" : "text";
+    input.id = `contact_${contact.id}`;
+    input.name = contact.id;
+    input.placeholder = contact.placeholder;
+    input.value = state.contactValues?.[contact.id] || "";
+    input.addEventListener("input", (e) => {
+      if (!state.contactValues) state.contactValues = {};
+      state.contactValues[contact.id] = e.target.value;
+      ownInput.value = "";
+      state.selected = "";
+    });
+    
+    field.appendChild(icon);
+    field.appendChild(input);
+    contactGrid.appendChild(field);
+  });
+  
+  optionsGrid.appendChild(contactGrid);
+}
+
 function showError(msg) {
   errBanner.textContent = msg;
   errBanner.classList.add("show");
@@ -788,6 +918,7 @@ function showQuestion(data) {
   clearError();
   doneBanner.classList.remove("show");
   genBtn.style.display = "none";
+  backBtn.style.display = state.history.length > 0 ? "" : "none";
   nextBtn.style.display = "";
   nextBtn.disabled = false;
   nextBtn.innerHTML = "Next Question →";
@@ -801,7 +932,13 @@ function showQuestion(data) {
   qTag.textContent = "Q" + (answered + 1);
   questionText.textContent = data.question;
 
-  renderOptions(data.options || []);
+  // Handle contact fields specially
+  if (data.contact_type) {
+    renderContactFields();
+  } else {
+    renderOptions(data.options || []);
+  }
+  
   renderBrief();
   renderOllamaStatus(data.ollama);
 }
@@ -820,6 +957,7 @@ function showBlocked(data) {
   ownInput.value = "";
 
   showError(data.error || "AI model is unavailable. Please retry in a moment.");
+  backBtn.style.display = state.history.length > 0 ? "" : "none";
   nextBtn.style.display = "none";
   retryBtn.style.display = "";
   retryBtn.disabled = false;
@@ -844,6 +982,7 @@ function showReadyToGenerate(meta) {
   clearError();
 
   doneBanner.classList.add("show");
+  backBtn.style.display = "";
   nextBtn.style.display = "none";
   retryBtn.style.display = "none";
   genBtn.style.display = "";
@@ -882,15 +1021,44 @@ async function loadNextQuestion() {
 }
 
 async function onNext() {
-  const custom = ownInput.value.trim();
-  const answer = custom || state.selected;
-  if (!answer) {
-    showError("Please pick an option or type your own answer.");
-    return;
-  }
+  // Handle contact fields specially
+  if (state.current.field === "contact") {
+    const contactValues = state.contactValues || {};
+    const hasPhone = contactValues.phone && contactValues.phone.trim();
+    const hasEmail = contactValues.email && contactValues.email.trim();
+    const hasWhatsApp = contactValues.whatsapp && contactValues.whatsapp.trim();
+    
+    if (!hasPhone && !hasEmail && !hasWhatsApp) {
+      showError("Please provide at least one contact method (phone, email, or WhatsApp).");
+      return;
+    }
+    
+    // Format contact details nicely
+    const contactDetails = [];
+    if (hasPhone) contactDetails.push(`📱 ${contactValues.phone}`);
+    if (hasEmail) contactDetails.push(`📧 ${contactValues.email}`);
+    if (hasWhatsApp) contactDetails.push(`💬 ${contactValues.whatsapp}`);
+    
+    clearError();
+    state.answers[state.current.field] = contactDetails.join(" | ");
+    state.contactValues = {}; // Reset for next time if needed
+  } else {
+    // Regular field handling
+    const custom = ownInput.value.trim();
+    const answer = custom || state.selected;
+    if (!answer) {
+      showError("Please pick an option or type your own answer.");
+      return;
+    }
 
-  clearError();
-  state.answers[state.current.field] = answer;
+    clearError();
+    state.answers[state.current.field] = answer;
+  }
+  
+  // Track this field in history if not already there
+  if (!state.history.includes(state.current.field)) {
+    state.history.push(state.current.field);
+  }
   renderBrief();
 
   nextBtn.disabled = true;
@@ -900,6 +1068,25 @@ async function onNext() {
   ownInput.value = "";
   state.selected = "";
 
+  await loadNextQuestion();
+}
+
+async function onBack() {
+  if (state.history.length === 0) return;
+  
+  // Remove the last answered question from history and answers
+  const lastField = state.history.pop();
+  delete state.answers[lastField];
+  renderBrief();
+  
+  backBtn.disabled = true;
+  backBtn.innerHTML = '<span class="spinner"></span> Loading…';
+  questionText.textContent = "Going back…";
+  optionsGrid.innerHTML = "";
+  ownInput.value = "";
+  state.selected = "";
+  clearError();
+  
   await loadNextQuestion();
 }
 

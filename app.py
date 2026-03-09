@@ -9,6 +9,10 @@ import requests
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 app = FastAPI()
 
@@ -37,7 +41,18 @@ OLLAMA_RETRY_SECONDS = int(os.getenv("OLLAMA_RETRY_SECONDS", "5"))
 OLLAMA_DISABLED_UNTIL = 0.0
 OLLAMA_LAST_ERROR = ""
 OLLAMA_AVAILABLE_MODELS: List[str] = []
+OLLAMA_HEALTH_CHECK_TIME = 0.0
+OLLAMA_LAST_HEALTH = False
 ACTIVE_MODEL = MODEL
+
+# ── Groq configuration (used as fallback when Ollama fails) ───────────────
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
+GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
+GROQ_ENABLED = bool(GROQ_API_KEY and GROQ_API_KEY.startswith("gsk_"))
+GROQ_RETRY_SECONDS = int(os.getenv("GROQ_RETRY_SECONDS", "5"))
+GROQ_DISABLED_UNTIL = 0.0
+GROQ_LAST_ERROR = ""
+
 TOTAL_DYNAMIC_STEPS = 4
 
 CATEGORY_FLOW = [
@@ -61,6 +76,16 @@ for i in range(1, TOTAL_DYNAMIC_STEPS + 1):
             "label": f"Dynamic Step {i}",
         }
     )
+
+# Add contact details field
+CATEGORY_FLOW.append(
+    {
+        "id": "contact",
+        "label": "Contact Details",
+        "fixed_question": "How can customers reach you? (At least one is required)",
+        "contact_type": True,
+    }
+)
 
 FIELD_MAP = {f["id"]: f for f in CATEGORY_FLOW}
 
@@ -165,28 +190,143 @@ def _ollama_status() -> Dict[str, Any]:
     }
 
 
+# ── Groq error state helpers ──────────────────────────────────────────────────
+
+def _set_groq_error(message: str, cooldown_seconds: Optional[int] = None) -> None:
+    global GROQ_DISABLED_UNTIL, GROQ_LAST_ERROR
+    GROQ_LAST_ERROR = message
+    if cooldown_seconds is not None:
+        GROQ_DISABLED_UNTIL = time.time() + max(1, cooldown_seconds)
+
+
+def _clear_groq_error() -> None:
+    global GROQ_DISABLED_UNTIL, GROQ_LAST_ERROR
+    GROQ_DISABLED_UNTIL = 0.0
+    GROQ_LAST_ERROR = ""
+
+
+# ── Ollama health check ───────────────────────────────────────────────────────
+
+def _check_ollama_health() -> bool:
+    """Check if Ollama is running and accessible (cached for 30s)."""
+    global OLLAMA_LAST_HEALTH, OLLAMA_HEALTH_CHECK_TIME, OLLAMA_AVAILABLE_MODELS
+    
+    if not OLLAMA_ENABLED:
+        return False
+    
+    now = time.time()
+    # Use cache if recent (30 seconds)
+    if now - OLLAMA_HEALTH_CHECK_TIME < 30:
+        return OLLAMA_LAST_HEALTH
+    
+    try:
+        resp = requests.get(OLLAMA_TAGS_URL, timeout=3)
+        if resp.status_code == 200:
+            OLLAMA_LAST_HEALTH = True
+            OLLAMA_HEALTH_CHECK_TIME = now
+            # Also cache models while we're at it
+            try:
+                data = resp.json()
+                OLLAMA_AVAILABLE_MODELS = sorted([m["name"] for m in data.get("models", [])])
+            except Exception:
+                pass
+            return True
+    except Exception:
+        pass
+    
+    OLLAMA_LAST_HEALTH = False
+    OLLAMA_HEALTH_CHECK_TIME = now
+    return False
+
+
+def _get_available_models() -> List[str]:
+    """Fetch list of available models from Ollama."""
+    if not OLLAMA_ENABLED:
+        return []
+    try:
+        resp = requests.get(OLLAMA_TAGS_URL, timeout=3)
+        resp.raise_for_status()
+        data = resp.json()
+        models = [m["name"] for m in data.get("models", [])]
+        return sorted(models)
+    except Exception as e:
+        print(f"[BRAIN:OLLAMA] Failed to fetch models: {e}")
+        return []
+
+
 # ── Core LLM call ─────────────────────────────────────────────────────────────
+
+def ask_groq(prompt: str) -> Dict[str, Any]:
+    """Send prompt to Groq API and return similar dict structure."""
+    global ACTIVE_MODEL
+    now = time.time()
+    if now < GROQ_DISABLED_UNTIL:
+        wait_seconds = max(1, int(round(GROQ_DISABLED_UNTIL - now)))
+        message = GROQ_LAST_ERROR or f"Groq is cooling down. Retry in {wait_seconds}s."
+        return {"text": "", "model": ACTIVE_MODEL, "error": message}
+    if not GROQ_ENABLED:
+        return {"text": "", "model": ACTIVE_MODEL, "error": "Groq not configured."}
+    try:
+        print(f"[BRAIN:GROQ] Sending REST prompt to '{GROQ_MODEL}' ({len(prompt)} chars)")
+        print(f"[BRAIN:GROQ] Prompt preview: {prompt[:120].strip()!r}...")
+        url = "https://api.groq.com/openai/v1/chat/completions"
+        headers = {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"}
+        payload = {
+            "model": GROQ_MODEL,
+            "messages": [{"role":"user","content":prompt}],
+            "temperature":0.7,
+            "max_tokens":1024,
+        }
+        resp = requests.post(url, json=payload, headers=headers, timeout=90)
+        resp.raise_for_status()
+        data = resp.json()
+        try:
+            text = data["choices"][0]["message"]["content"].strip()
+        except Exception as e:
+            raise ValueError(f"Invalid Groq response format: {e}")
+        if not text:
+            raise ValueError("Groq returned empty text")
+        ACTIVE_MODEL = GROQ_MODEL
+        _clear_groq_error()
+        print(f"[BRAIN:GROQ] Response received ({len(text)} chars): {text[:120]!r}...")
+        return {"text": text, "model": GROQ_MODEL, "error": ""}
+    except requests.HTTPError as exc:
+        message = f"Groq HTTP {exc.response.status_code}: {exc.response.text[:200]}"
+        print(f"[BRAIN:GROQ] HTTP Error: {message}")
+        _set_groq_error(message, cooldown_seconds=GROQ_RETRY_SECONDS)
+        return {"text": "", "model": ACTIVE_MODEL, "error": message}
+    except Exception as exc:
+        message = f"Groq error: {exc}"
+        print(f"[BRAIN:GROQ] Exception: {exc}")
+        _set_groq_error(message, cooldown_seconds=GROQ_RETRY_SECONDS)
+        return {"text": "", "model": ACTIVE_MODEL, "error": message}
+
 
 def ask_llm(prompt: str) -> Dict[str, Any]:
     global ACTIVE_MODEL
 
     if not OLLAMA_ENABLED:
+        if GROQ_ENABLED:
+            print("[BRAIN:LLM] Ollama disabled, using Groq")
+            return ask_groq(prompt)
         return {
             "text": "",
             "model": ACTIVE_MODEL,
-            "error": "Ollama is disabled. Set OLLAMA_ENABLED=true to use dynamic questions.",
+            "error": "Ollama is disabled and Groq is not configured.",
         }
 
     now = time.time()
     if now < OLLAMA_DISABLED_UNTIL:
         wait_seconds = max(1, int(round(OLLAMA_DISABLED_UNTIL - now)))
         message = OLLAMA_LAST_ERROR or f"Ollama is cooling down. Retry in {wait_seconds}s."
+        if GROQ_ENABLED:
+            print(f"[BRAIN:LLM] {message}, falling back to Groq")
+            return ask_groq(prompt)
         return {"text": "", "model": ACTIVE_MODEL, "error": message}
 
     try:
         print(f"[BRAIN:OLLAMA] Sending REST prompt to '{MODEL}' ({len(prompt)} chars)")
         print(f"[BRAIN:OLLAMA] Prompt preview: {prompt[:120].strip()!r}...")
-        print(f"[BRAIN:OLLAMA] URL: {OLLAMA_URL}")
         
         payload = {"model": MODEL, "prompt": prompt, "stream": False}
         resp = requests.post(OLLAMA_URL, json=payload, timeout=90)
@@ -198,22 +338,31 @@ def ask_llm(prompt: str) -> Dict[str, Any]:
         
         if not text:
             _set_ollama_error("Empty response from Ollama", OLLAMA_RETRY_SECONDS)
+            if GROQ_ENABLED:
+                print("[BRAIN:OLLAMA] Empty response, falling back to Groq")
+                return ask_groq(prompt)
             return {"text": "", "model": ACTIVE_MODEL, "error": "Empty response from Ollama"}
         
         _clear_ollama_error()
-        return {"text": text, "model": ACTIVE_MODEL, "error": ""}
+        ACTIVE_MODEL = MODEL
+        return {"text": text, "model": MODEL, "error": ""}
     
     except requests.exceptions.RequestException as e:
         error_msg = f"Ollama request failed: {str(e)}"
         print(f"[BRAIN:OLLAMA] {error_msg}")
         _set_ollama_error(error_msg, OLLAMA_RETRY_SECONDS)
+        if GROQ_ENABLED:
+            print("[BRAIN:OLLAMA] falling back to Groq")
+            return ask_groq(prompt)
         return {"text": "", "model": ACTIVE_MODEL, "error": error_msg}
     except Exception as e:
         error_msg = f"Unexpected error with Ollama: {str(e)}"
         print(f"[BRAIN:OLLAMA] {error_msg}")
         _set_ollama_error(error_msg, OLLAMA_RETRY_SECONDS)
+        if GROQ_ENABLED:
+            print("[BRAIN:OLLAMA] unexpected error, falling back to Groq")
+            return ask_groq(prompt)
         return {"text": "", "model": ACTIVE_MODEL, "error": error_msg}
-
 
 # ── API endpoints ─────────────────────────────────────────────────────────────
 
@@ -224,7 +373,26 @@ def index():
 
 @app.get("/api/status")
 def api_status():
-    return JSONResponse({"status": "ok", "version": "1.0", "ollama": _ollama_status()})
+    ollama_health = _check_ollama_health()
+    
+    return JSONResponse({
+        "status": "ok",
+        "version": "1.0",
+        "groq": {
+            "enabled": GROQ_ENABLED,
+            "model": GROQ_MODEL,
+        },
+        "ollama": {
+            "enabled": OLLAMA_ENABLED,
+            "configured_model": MODEL,
+            "active_model": ACTIVE_MODEL,
+            "healthy": ollama_health,
+            "url": OLLAMA_BASE_URL,
+            "available_models": OLLAMA_AVAILABLE_MODELS,
+            "last_error": OLLAMA_LAST_ERROR,
+            "retry_after_seconds": max(0, int(round(OLLAMA_DISABLED_UNTIL - time.time()))) if OLLAMA_DISABLED_UNTIL > 0 else 0,
+        }
+    })
 
 
 @app.post("/api/next_question")
@@ -237,6 +405,19 @@ async def api_next_question(request: Request):
         return JSONResponse({"done": True})
     
     field = FIELD_MAP[field_id]
+    
+    if field_id == "contact":
+        # Contact field special handling
+        return JSONResponse({
+            "done": False,
+            "field": field_id,
+            "label": field["label"],
+            "question": field["fixed_question"],
+            "contact_type": True,
+            "total_steps": len(CATEGORY_FLOW),
+            "answered_steps": len([k for k in answers if has_value(answers, k)]),
+            "ollama": _ollama_status(),
+        })
     
     if "fixed_question" in field:
         # Fixed question

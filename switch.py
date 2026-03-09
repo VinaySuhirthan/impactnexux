@@ -1,4 +1,4 @@
-brain = False  # True = Qwen / Ollama (app.py) | False = Groq (appbc.py)
+brain = True  # True = Qwen / Ollama (app.py) | False = Groq (appbc:app)
 
 import subprocess
 import sys

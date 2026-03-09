@@ -7,11 +7,15 @@ from typing import Any, Dict, List, Optional
 import requests
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 from fastapi.responses import FileResponse, JSONResponse
 
 # ── Groq configuration ──────────────────────────────────────────────────────
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
-GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.1-70b-versatile")
+GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
 
 # ── App ───────────────────────────────────────────────────────────────────────
 app = FastAPI()
@@ -58,6 +62,16 @@ for i in range(1, TOTAL_DYNAMIC_STEPS + 1):
             "label": f"Dynamic Step {i}",
         }
     )
+
+# Add contact details field
+CATEGORY_FLOW.append(
+    {
+        "id": "contact",
+        "label": "Contact Details",
+        "fixed_question": "How can customers reach you? (At least one is required)",
+        "contact_type": True,
+    }
+)
 
 FIELD_MAP = {f["id"]: f for f in CATEGORY_FLOW}
 
@@ -365,6 +379,20 @@ async def api_next_question(request: Request):
             "label": field["label"],
             "question": question,
             "options": options,
+            "total_steps": len(CATEGORY_FLOW),
+            "answered_steps": sum(1 for f in CATEGORY_FLOW if has_value(answers, f["id"])),
+            "ollama": _groq_status(),
+        }
+        return JSONResponse(response_payload)
+
+    if field_id == "contact":
+        question = field["fixed_question"]
+        response_payload = {
+            "done": False,
+            "field": field_id,
+            "label": field["label"],
+            "question": question,
+            "contact_type": True,
             "total_steps": len(CATEGORY_FLOW),
             "answered_steps": sum(1 for f in CATEGORY_FLOW if has_value(answers, f["id"])),
             "ollama": _groq_status(),

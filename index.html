@@ -1,0 +1,874 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>AdGPT · Ad Brief Builder</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:       #0a0a0f;
+  --surface:  #111118;
+  --card:     #16161f;
+  --border:   rgba(255,255,255,0.07);
+  --border-active: rgba(100,180,255,0.5);
+  --text:     #f0f0f8;
+  --muted:    #6b7280;
+  --subtle:   #9ca3af;
+  --brand:    #60a5fa;
+  --brand-2:  #a78bfa;
+  --success:  #34d399;
+  --warn:     #f59e0b;
+  --danger:   #ef4444;
+  --radius:   16px;
+  --radius-lg:24px;
+}
+
+html { scroll-behavior: smooth; }
+
+body {
+  font-family: 'Inter', system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── TOPBAR ── */
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 32px;
+  height: 60px;
+  background: rgba(10,10,15,0.85);
+  backdrop-filter: blur(20px);
+  border-bottom: 1px solid var(--border);
+}
+
+.logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 700;
+  font-size: 17px;
+  letter-spacing: -0.03em;
+  color: var(--text);
+  text-decoration: none;
+}
+
+.logo-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, var(--brand), var(--brand-2));
+  display: grid;
+  place-items: center;
+  font-size: 16px;
+}
+
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.status-dot {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--muted);
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--muted);
+  transition: background 0.3s;
+}
+.dot.green  { background: var(--success); box-shadow: 0 0 8px var(--success); }
+.dot.red    { background: var(--danger);  box-shadow: 0 0 8px var(--danger);  }
+.dot.orange { background: var(--warn);    box-shadow: 0 0 8px var(--warn);    }
+
+/* ── LAYOUT ── */
+.app {
+  display: grid;
+  grid-template-columns: 1fr 380px;
+  gap: 0;
+  min-height: calc(100vh - 60px);
+}
+
+/* ── MAIN PANEL ── */
+.main {
+  padding: 48px 56px;
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 40px;
+}
+
+/* ── PROGRESS ── */
+.progress-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.step-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  white-space: nowrap;
+  letter-spacing: 0.02em;
+}
+
+.progress-track {
+  flex: 1;
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.06);
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--brand), var(--brand-2));
+  transition: width 0.5s cubic-bezier(0.4,0,0.2,1);
+  width: 0%;
+}
+
+.pct-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--subtle);
+  min-width: 36px;
+  text-align: right;
+}
+
+/* ── QUESTION BLOCK ── */
+.q-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.q-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--brand);
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(96,165,250,0.1);
+  border: 1px solid rgba(96,165,250,0.2);
+  width: fit-content;
+}
+
+.q-text {
+  font-size: clamp(26px, 3.5vw, 42px);
+  font-weight: 700;
+  letter-spacing: -0.04em;
+  line-height: 1.1;
+  color: var(--text);
+  margin-top: 8px;
+}
+
+/* ── OPTIONS ── */
+.options-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+
+.opt-btn {
+  appearance: none;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px 18px;
+  text-align: left;
+  cursor: pointer;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.4;
+  transition: border-color 0.15s, background 0.15s, transform 0.12s;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.opt-btn:nth-child(5) { grid-column: 1 / -1; }
+
+.opt-btn:hover {
+  border-color: rgba(96,165,250,0.3);
+  background: rgba(96,165,250,0.05);
+  transform: translateY(-1px);
+}
+
+.opt-btn.selected {
+  border-color: var(--brand);
+  background: rgba(96,165,250,0.08);
+}
+
+.opt-num {
+  min-width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  background: rgba(255,255,255,0.06);
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.opt-btn.selected .opt-num {
+  background: var(--brand);
+  color: #000;
+}
+
+/* ── CUSTOM INPUT ── */
+.custom-row {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--card);
+  overflow: hidden;
+  transition: border-color 0.15s;
+}
+
+.custom-row:focus-within {
+  border-color: rgba(96,165,250,0.4);
+}
+
+.custom-label {
+  padding: 0 16px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+  border-right: 1px solid var(--border);
+  height: 52px;
+  display: flex;
+  align-items: center;
+}
+
+#ownInput {
+  flex: 1;
+  background: none;
+  border: none;
+  outline: none;
+  padding: 0 16px;
+  font-family: inherit;
+  font-size: 15px;
+  color: var(--text);
+  height: 52px;
+}
+
+#ownInput::placeholder { color: var(--muted); }
+#ownInput:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* ── ACTIONS ── */
+.actions-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 13px 24px;
+  border-radius: var(--radius);
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  transition: opacity 0.15s, transform 0.12s;
+}
+
+.btn:hover { transform: translateY(-1px); }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; transform: none; }
+
+.btn-primary {
+  background: linear-gradient(135deg, var(--brand), var(--brand-2));
+  color: #fff;
+  box-shadow: 0 4px 20px rgba(96,165,250,0.25);
+}
+
+.btn-ghost {
+  background: rgba(255,255,255,0.05);
+  border: 1px solid var(--border);
+  color: var(--subtle);
+}
+
+.btn-ghost:hover { background: rgba(255,255,255,0.08); }
+
+/* ── ERROR BANNER ── */
+.err-banner {
+  display: none;
+  border-radius: var(--radius);
+  background: rgba(239,68,68,0.08);
+  border: 1px solid rgba(239,68,68,0.2);
+  padding: 14px 18px;
+  color: #fca5a5;
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.err-banner.show { display: block; }
+
+/* ── SIDEBAR ── */
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+.sidebar-section {
+  padding: 32px 28px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.sidebar-section:last-child { border-bottom: none; flex: 1; }
+
+.section-title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 16px;
+}
+
+/* ── BRIEF LIST ── */
+.brief-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.brief-item {
+  border-radius: 12px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  padding: 12px 14px;
+  animation: fadeUp 0.3s ease;
+}
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.brief-key {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--muted);
+  display: block;
+  margin-bottom: 4px;
+}
+
+.brief-val {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text);
+  line-height: 1.4;
+}
+
+.brief-empty {
+  font-size: 14px;
+  color: var(--muted);
+  text-align: center;
+  padding: 24px 0;
+}
+
+/* ── OUTPUT ── */
+.output-area {
+  flex: 1;
+  padding: 32px 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.output-box {
+  flex: 1;
+  border-radius: var(--radius);
+  background: var(--card);
+  border: 1px solid var(--border);
+  padding: 18px;
+  overflow-y: auto;
+  min-height: 200px;
+}
+
+#output {
+  font-family: 'Inter', monospace;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--subtle);
+  white-space: pre-wrap;
+}
+
+#output.active { color: var(--text); }
+
+/* ── DONE STATE ── */
+.done-banner {
+  padding: 20px;
+  border-radius: var(--radius-lg);
+  background: linear-gradient(135deg, rgba(52,211,153,0.08), rgba(96,165,250,0.06));
+  border: 1px solid rgba(52,211,153,0.2);
+  text-align: center;
+  display: none;
+}
+
+.done-banner.show { display: block; }
+
+.done-banner h2 {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  margin-bottom: 6px;
+}
+
+.done-banner p {
+  font-size: 14px;
+  color: var(--muted);
+}
+
+/* ── LOADING SKELETON ── */
+.skeleton {
+  border-radius: 8px;
+  background: linear-gradient(90deg, var(--card) 25%, rgba(255,255,255,0.04) 50%, var(--card) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s infinite;
+}
+
+@keyframes shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* ── SPINNER ── */
+.spinner {
+  width: 18px; height: 18px;
+  border: 2px solid rgba(255,255,255,0.15);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── RESPONSIVE ── */
+@media (max-width: 900px) {
+  .app { grid-template-columns: 1fr; }
+  .main { padding: 28px 20px; }
+  .sidebar { border-top: 1px solid var(--border); border-right: none; }
+  .sidebar-section { padding: 24px 20px; }
+  .output-area { padding: 20px; }
+  .topbar { padding: 0 20px; }
+}
+
+@media (max-width: 560px) {
+  .options-grid { grid-template-columns: 1fr; }
+  .opt-btn:nth-child(5) { grid-column: auto; }
+  .q-text { font-size: 26px; }
+}
+</style>
+</head>
+<body>
+
+<!-- TOPBAR -->
+<header class="topbar">
+  <div class="logo">
+    <div class="logo-icon">✦</div>
+    AdGPT
+  </div>
+  <div class="topbar-right">
+    <div class="status-dot" id="statusPill">
+      <span class="dot" id="statusDot"></span>
+      <span id="statusText">Connecting</span>
+    </div>
+  </div>
+</header>
+
+<!-- APP LAYOUT -->
+<div class="app">
+
+  <!-- MAIN: INTERVIEW -->
+  <main class="main" id="interviewView">
+    <!-- Progress -->
+    <div class="progress-row">
+      <span class="step-label" id="stepLabel">Step 0 / 9</span>
+      <div class="progress-track">
+        <div class="progress-fill" id="progressFill"></div>
+      </div>
+      <span class="pct-label" id="pctLabel">0%</span>
+    </div>
+
+    <!-- Question -->
+    <div class="q-block" id="qBlock">
+      <span class="q-tag" id="qTag">Question</span>
+      <h1 class="q-text" id="questionText">Loading your first question…</h1>
+    </div>
+
+    <!-- Options -->
+    <div class="options-grid" id="optionsGrid"></div>
+
+    <!-- Custom answer row -->
+    <div class="custom-row">
+      <span class="custom-label">Or type</span>
+      <input id="ownInput" type="text" placeholder="Write your own answer…" autocomplete="off" />
+    </div>
+
+    <!-- Error -->
+    <div class="err-banner" id="errBanner"></div>
+
+    <!-- Done state -->
+    <div class="done-banner" id="doneBanner">
+      <h2>Brief complete ✓</h2>
+      <p>All questions answered. Hit generate to create your ad assets.</p>
+    </div>
+
+    <!-- Actions -->
+    <div class="actions-row">
+      <button class="btn btn-primary" id="nextBtn" onclick="onNext()">
+        Next Question →
+      </button>
+      <button class="btn btn-ghost" id="retryBtn" onclick="onRetry()" style="display:none">
+        Retry
+      </button>
+    </div>
+  </main>
+
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+
+    <!-- Live Brief -->
+    <div class="sidebar-section">
+      <div class="section-title">Your Brief</div>
+      <div class="brief-list" id="briefList">
+        <div class="brief-empty" id="briefEmpty">Answers will appear here as you go.</div>
+      </div>
+    </div>
+
+    <!-- Output -->
+    <div class="output-area">
+      <div class="section-title">Creative Output</div>
+      <div class="output-box">
+        <pre id="output">Ad copy will appear here once all questions are answered.</pre>
+      </div>
+      <button class="btn btn-primary" id="genBtn" onclick="onGenerate()" style="display:none; width:100%">
+        Generate Ad Assets
+      </button>
+    </div>
+
+  </aside>
+</div>
+
+<script>
+const state = {
+  answers: {},
+  current: null,
+  selected: "",
+  totalSteps: 9,
+  mode: "question", // question | blocked | generate | generating | done
+};
+
+// DOM refs
+const stepLabel     = document.getElementById("stepLabel");
+const progressFill  = document.getElementById("progressFill");
+const pctLabel      = document.getElementById("pctLabel");
+const qTag          = document.getElementById("qTag");
+const questionText  = document.getElementById("questionText");
+const optionsGrid   = document.getElementById("optionsGrid");
+const ownInput      = document.getElementById("ownInput");
+const errBanner     = document.getElementById("errBanner");
+const doneBanner    = document.getElementById("doneBanner");
+const nextBtn       = document.getElementById("nextBtn");
+const retryBtn      = document.getElementById("retryBtn");
+const briefList     = document.getElementById("briefList");
+const briefEmpty    = document.getElementById("briefEmpty");
+const output        = document.getElementById("output");
+const genBtn        = document.getElementById("genBtn");
+const statusDot     = document.getElementById("statusDot");
+const statusText    = document.getElementById("statusText");
+
+function esc(str) {
+  return String(str).replace(/[&<>"']/g, m => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]));
+}
+
+function prettyKey(k) {
+  return k.replace(/_/g," ").replace(/\b\w/g, x => x.toUpperCase());
+}
+
+function setStatus(state, label) {
+  // state: "ok" | "err" | "wait"
+  statusDot.className = "dot " + (state === "ok" ? "green" : state === "err" ? "red" : "orange");
+  statusText.textContent = label;
+}
+
+function setProgress(answered, total) {
+  const pct = total ? Math.round((answered / total) * 100) : 0;
+  progressFill.style.width = pct + "%";
+  pctLabel.textContent = pct + "%";
+  stepLabel.textContent = "Step " + answered + " / " + total;
+  state.totalSteps = total || state.totalSteps;
+}
+
+function renderBrief() {
+  const entries = Object.entries(state.answers);
+  if (!entries.length) {
+    briefEmpty.style.display = "";
+    // Remove any existing items (keep briefEmpty)
+    Array.from(briefList.children).forEach(c => { if (c !== briefEmpty) c.remove(); });
+    return;
+  }
+  briefEmpty.style.display = "none";
+  briefList.innerHTML = "";
+  for (const [k, v] of entries) {
+    const el = document.createElement("div");
+    el.className = "brief-item";
+    el.innerHTML = `<span class="brief-key">${esc(prettyKey(k))}</span><span class="brief-val">${esc(v)}</span>`;
+    briefList.appendChild(el);
+  }
+}
+
+function renderOptions(opts) {
+  optionsGrid.innerHTML = "";
+  if (!opts || !opts.length) return;
+  opts.forEach((opt, i) => {
+    const btn = document.createElement("button");
+    btn.className = "opt-btn";
+    btn.innerHTML = `<span class="opt-num">${i+1}</span>${esc(opt)}`;
+    btn.onclick = () => {
+      state.selected = opt;
+      ownInput.value = "";
+      document.querySelectorAll(".opt-btn").forEach(b => b.classList.remove("selected"));
+      btn.classList.add("selected");
+    };
+    optionsGrid.appendChild(btn);
+  });
+}
+
+function showError(msg) {
+  errBanner.textContent = msg;
+  errBanner.classList.add("show");
+}
+
+function clearError() {
+  errBanner.textContent = "";
+  errBanner.classList.remove("show");
+}
+
+function renderOllamaStatus(meta) {
+  if (!meta) return;
+  const hasError = meta.last_error && meta.last_error.trim();
+  const isReady  = meta.enabled && !hasError;
+  setStatus(isReady ? "ok" : hasError ? "err" : "wait",
+            isReady ? "AI Ready" : hasError ? "AI Error" : "Checking");
+}
+
+// ── Question rendering ──
+function showQuestion(data) {
+  state.current = data;
+  state.mode = "question";
+  state.selected = "";
+
+  clearError();
+  doneBanner.classList.remove("show");
+  genBtn.style.display = "none";
+  nextBtn.style.display = "";
+  nextBtn.disabled = false;
+  nextBtn.innerHTML = "Next Question →";
+  retryBtn.style.display = "none";
+  ownInput.disabled = false;
+  ownInput.value = "";
+
+  const answered = data.answered_steps || 0;
+  setProgress(answered, data.total_steps || state.totalSteps);
+
+  qTag.textContent = "Q" + (answered + 1);
+  questionText.textContent = data.question;
+
+  renderOptions(data.options || []);
+  renderBrief();
+  renderOllamaStatus(data.ollama);
+}
+
+function showBlocked(data) {
+  state.current = data;
+  state.mode = "blocked";
+
+  const answered = data.answered_steps || 0;
+  setProgress(answered, data.total_steps || state.totalSteps);
+
+  qTag.textContent = "Error";
+  questionText.textContent = "Couldn't generate the next question.";
+  optionsGrid.innerHTML = "";
+  ownInput.disabled = true;
+  ownInput.value = "";
+
+  showError(data.error || "AI model is unavailable. Please retry in a moment.");
+  nextBtn.style.display = "none";
+  retryBtn.style.display = "";
+  retryBtn.disabled = false;
+  retryBtn.textContent = "↺ Retry";
+  doneBanner.classList.remove("show");
+  genBtn.style.display = "none";
+
+  renderBrief();
+  renderOllamaStatus(data.ollama);
+  setStatus("err", "AI Error");
+}
+
+function showReadyToGenerate(meta) {
+  state.mode = "generate";
+
+  setProgress(state.totalSteps, state.totalSteps);
+  qTag.textContent = "Done";
+  questionText.textContent = "All questions answered!";
+  optionsGrid.innerHTML = "";
+  ownInput.disabled = true;
+  ownInput.value = "";
+  clearError();
+
+  doneBanner.classList.add("show");
+  nextBtn.style.display = "none";
+  retryBtn.style.display = "none";
+  genBtn.style.display = "";
+  genBtn.disabled = false;
+  genBtn.innerHTML = "✦ Generate Ad Assets";
+
+  renderBrief();
+  renderOllamaStatus(meta);
+}
+
+// ── API ──
+async function api(url, body) {
+  const opts = body
+    ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }
+    : { method: "GET" };
+  const res = await fetch(url, opts);
+  if (!res.ok) throw new Error("HTTP " + res.status);
+  return res.json();
+}
+
+async function loadNextQuestion() {
+  try {
+    const data = await api("/api/next_question", { answers: state.answers });
+    if (data.done) { showReadyToGenerate(data.ollama); return; }
+    if (data.error) { showBlocked(data); return; }
+    showQuestion(data);
+  } catch (err) {
+    showBlocked({
+      field: state.current?.field || "unknown",
+      label: "Step",
+      total_steps: state.totalSteps,
+      answered_steps: Object.keys(state.answers).length,
+      error: "Could not reach the server. Make sure the backend is running.",
+    });
+  }
+}
+
+async function onNext() {
+  const custom = ownInput.value.trim();
+  const answer = custom || state.selected;
+  if (!answer) {
+    showError("Please pick an option or type your own answer.");
+    return;
+  }
+
+  clearError();
+  state.answers[state.current.field] = answer;
+  renderBrief();
+
+  nextBtn.disabled = true;
+  nextBtn.innerHTML = '<span class="spinner"></span> Loading…';
+  questionText.textContent = "Generating next question…";
+  optionsGrid.innerHTML = "";
+  ownInput.value = "";
+  state.selected = "";
+
+  await loadNextQuestion();
+}
+
+async function onRetry() {
+  retryBtn.disabled = true;
+  retryBtn.textContent = "Retrying…";
+  clearError();
+  questionText.textContent = "Retrying…";
+  await loadNextQuestion();
+}
+
+async function onGenerate() {
+  state.mode = "generating";
+  genBtn.disabled = true;
+  genBtn.innerHTML = '<span class="spinner"></span> Generating…';
+  output.className = "";
+  output.textContent = "Working on your ad assets…";
+  setStatus("wait", "Generating");
+
+  try {
+    const data = await api("/api/generate_assets", { answers: state.answers });
+    renderOllamaStatus(data.ollama);
+
+    if (data.error) {
+      output.textContent = "⚠ " + data.error;
+      setStatus("err", "Generation failed");
+    } else {
+      output.textContent = data.output || "No output returned.";
+      output.className = "active";
+      setStatus("ok", "Done");
+    }
+  } catch (err) {
+    output.textContent = "Could not reach the server. Try again.";
+    setStatus("err", "Error");
+  }
+
+  state.mode = "generate";
+  genBtn.disabled = false;
+  genBtn.innerHTML = "↺ Regenerate";
+}
+
+// ── Init ──
+renderBrief();
+loadNextQuestion();
+</script>
+</body>
+</html>

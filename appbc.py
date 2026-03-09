@@ -9,9 +9,9 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 
-# ── Gemini configuration ──────────────────────────────────────────────────────
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "AIzaSyBXT8nbnApafaYSYa-Cgxv8QJV3pfZfWeE")
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+# ── Groq configuration ──────────────────────────────────────────────────────
+GROQ_API_KEY = "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"
+GROQ_MODEL = "llama-3.1-70b-versatile"
 
 # ── App ───────────────────────────────────────────────────────────────────────
 app = FastAPI()
@@ -26,14 +26,14 @@ app.add_middleware(
 BASE_DIR = Path(__file__).resolve().parent
 INDEX_FILE = BASE_DIR / "index.html"
 
-# ── State that mirrors app.py's "ollama" state (renamed to "gemini") ──────────
-GEMINI_ENABLED = (
-    os.getenv("GEMINI_ENABLED", "true").strip().lower() in {"1", "true", "yes", "on"}
+# ── State that mirrors app.py's "ollama" state (renamed to "groq") ──────────
+GROQ_ENABLED = (
+    os.getenv("GROQ_ENABLED", "true").strip().lower() in {"1", "true", "yes", "on"}
 )
-GEMINI_DISABLED_UNTIL = 0.0
-GEMINI_LAST_ERROR = ""
-ACTIVE_MODEL = GEMINI_MODEL
-GEMINI_RETRY_SECONDS = int(os.getenv("GEMINI_RETRY_SECONDS", "5"))
+GROQ_DISABLED_UNTIL = 0.0
+GROQ_LAST_ERROR = ""
+ACTIVE_MODEL = GROQ_MODEL
+GROQ_RETRY_SECONDS = int(os.getenv("GROQ_RETRY_SECONDS", "5"))
 
 TOTAL_DYNAMIC_STEPS = 4
 
@@ -133,31 +133,31 @@ def _clean_options(values: Any) -> List[str]:
     return cleaned
 
 
-# ── Gemini error state helpers ────────────────────────────────────────────────
+# ── Groq error state helpers ────────────────────────────────────────────────
 
-def _set_gemini_error(message: str, cooldown_seconds: Optional[int] = None) -> None:
-    global GEMINI_DISABLED_UNTIL, GEMINI_LAST_ERROR
-    GEMINI_LAST_ERROR = message
+def _set_groq_error(message: str, cooldown_seconds: Optional[int] = None) -> None:
+    global GROQ_DISABLED_UNTIL, GROQ_LAST_ERROR
+    GROQ_LAST_ERROR = message
     if cooldown_seconds is not None:
-        GEMINI_DISABLED_UNTIL = time.time() + max(1, cooldown_seconds)
+        GROQ_DISABLED_UNTIL = time.time() + max(1, cooldown_seconds)
 
 
-def _clear_gemini_error() -> None:
-    global GEMINI_DISABLED_UNTIL, GEMINI_LAST_ERROR
-    GEMINI_DISABLED_UNTIL = 0.0
-    GEMINI_LAST_ERROR = ""
+def _clear_groq_error() -> None:
+    global GROQ_DISABLED_UNTIL, GROQ_LAST_ERROR
+    GROQ_DISABLED_UNTIL = 0.0
+    GROQ_LAST_ERROR = ""
 
 
-def _gemini_status() -> Dict[str, Any]:
+def _groq_status() -> Dict[str, Any]:
     retry_after = 0
-    if GEMINI_DISABLED_UNTIL > 0:
-        retry_after = max(0, int(round(GEMINI_DISABLED_UNTIL - time.time())))
+    if GROQ_DISABLED_UNTIL > 0:
+        retry_after = max(0, int(round(GROQ_DISABLED_UNTIL - time.time())))
 
     return {
-        "enabled": GEMINI_ENABLED,
-        "configured_model": GEMINI_MODEL,
+        "enabled": GROQ_ENABLED,
+        "configured_model": GROQ_MODEL,
         "active_model": ACTIVE_MODEL,
-        "last_error": GEMINI_LAST_ERROR,
+        "last_error": GROQ_LAST_ERROR,
         "retry_after_seconds": retry_after,
     }
 
@@ -167,67 +167,75 @@ def _gemini_status() -> Dict[str, Any]:
 def ask_llm(prompt: str) -> Dict[str, Any]:
     global ACTIVE_MODEL
 
-    if not GEMINI_API_KEY or GEMINI_API_KEY.startswith("AIzaSy") == False:
+    if not GROQ_API_KEY or not GROQ_API_KEY.startswith("gsk_"):
         return {
             "text": "",
             "model": ACTIVE_MODEL,
-            "error": "GEMINI_API_KEY is not set or invalid. Please set GEMINI_API_KEY environment variable with a valid key.",
+            "error": "GROQ_API_KEY is not set or invalid. Please set GROQ_API_KEY environment variable with a valid key.",
         }
 
-    if not GEMINI_ENABLED:
+    if not GROQ_ENABLED:
         return {
             "text": "",
             "model": ACTIVE_MODEL,
-            "error": "Gemini is disabled. Set GEMINI_ENABLED=true to use dynamic questions.",
+            "error": "Groq is disabled. Set GROQ_ENABLED=true to use dynamic questions.",
         }
 
     now = time.time()
-    if now < GEMINI_DISABLED_UNTIL:
-        wait_seconds = max(1, int(round(GEMINI_DISABLED_UNTIL - now)))
-        message = GEMINI_LAST_ERROR or f"Gemini is cooling down. Retry in {wait_seconds}s."
+    if now < GROQ_DISABLED_UNTIL:
+        wait_seconds = max(1, int(round(GROQ_DISABLED_UNTIL - now)))
+        message = GROQ_LAST_ERROR or f"Groq is cooling down. Retry in {wait_seconds}s."
         return {"text": "", "model": ACTIVE_MODEL, "error": message}
 
     try:
-        print(f"[BRAIN:GEMINI] Sending REST prompt to '{GEMINI_MODEL}' ({len(prompt)} chars)")
-        print(f"[BRAIN:GEMINI] Prompt preview: {prompt[:120].strip()!r}...")
-        print(f"[BRAIN:GEMINI] API Key check: {GEMINI_API_KEY[:20]}...")
+        print(f"[BRAIN:GROQ] Sending REST prompt to '{GROQ_MODEL}' ({len(prompt)} chars)")
+        print(f"[BRAIN:GROQ] Prompt preview: {prompt[:120].strip()!r}...")
+        print(f"[BRAIN:GROQ] API Key check: {GROQ_API_KEY[:20]}...")
         
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent?key={GEMINI_API_KEY}"
-        payload = {"contents": [{"parts": [{"text": prompt}]}]}
-        headers = {"Content-Type": "application/json"}
+        url = "https://api.groq.com/openai/v1/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {GROQ_API_KEY}",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "model": GROQ_MODEL,
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": 0.7,
+            "max_tokens": 1024
+        }
         
-        print(f"[BRAIN:GEMINI] Requesting: {url[:80]}...")
+        print(f"[BRAIN:GROQ] Requesting: {url}...")
         resp = requests.post(url, json=payload, headers=headers, timeout=90)
-        print(f"[BRAIN:GEMINI] Status code: {resp.status_code}")
-        print(f"[BRAIN:GEMINI] Response: {resp.text[:500]}")
+        print(f"[BRAIN:GROQ] Status code: {resp.status_code}")
+        print(f"[BRAIN:GROQ] Response: {resp.text[:500]}")
         
         resp.raise_for_status()
         data = resp.json()
         
         try:
-            text = data["candidates"][0]["content"]["parts"][0]["text"]
+            text = data["choices"][0]["message"]["content"]
             text = text.strip() if text else ""
         except (KeyError, IndexError) as e:
-            print(f"[BRAIN:GEMINI] Parse error: {e}, data: {data}")
-            raise ValueError(f"Invalid block format from Gemini output: {e}")
+            print(f"[BRAIN:GROQ] Parse error: {e}, data: {data}")
+            raise ValueError(f"Invalid response format from Groq output: {e}")
             
         if not text:
-            raise ValueError("Gemini returned an empty response.")
-        ACTIVE_MODEL = GEMINI_MODEL
-        _clear_gemini_error()
-        print(f"[BRAIN:GEMINI] Response received ({len(text)} chars): {text[:120].strip()!r}...")
-        return {"text": text, "model": GEMINI_MODEL, "error": ""}
+            raise ValueError("Groq returned an empty response.")
+        ACTIVE_MODEL = GROQ_MODEL
+        _clear_groq_error()
+        print(f"[BRAIN:GROQ] Response received ({len(text)} chars): {text[:120].strip()!r}...")
+        return {"text": text, "model": GROQ_MODEL, "error": ""}
     except requests.HTTPError as exc:
-        message = f"Gemini HTTP {exc.response.status_code}: {exc.response.text[:200]}"
-        print(f"[BRAIN:GEMINI] HTTP Error: {message}")
-        _set_gemini_error(message, cooldown_seconds=GEMINI_RETRY_SECONDS)
+        message = f"Groq HTTP {exc.response.status_code}: {exc.response.text[:200]}"
+        print(f"[BRAIN:GROQ] HTTP Error: {message}")
+        _set_groq_error(message, cooldown_seconds=GROQ_RETRY_SECONDS)
         return {"text": "", "model": ACTIVE_MODEL, "error": message}
     except Exception as exc:
         import traceback
         error_trace = traceback.format_exc()
-        message = f"Gemini error: {exc}"
-        print(f"[BRAIN:GEMINI] Exception: {error_trace}")
-        _set_gemini_error(message, cooldown_seconds=GEMINI_RETRY_SECONDS)
+        message = f"Groq error: {exc}"
+        print(f"[BRAIN:GROQ] Exception: {error_trace}")
+        _set_groq_error(message, cooldown_seconds=GROQ_RETRY_SECONDS)
         return {"text": "", "model": ACTIVE_MODEL, "error": message}
 
 
@@ -333,7 +341,7 @@ def index() -> FileResponse:
 @app.get("/api/ollama_status")
 def api_ollama_status():
     """Kept as /api/ollama_status so the frontend doesn't need changes."""
-    return JSONResponse(_gemini_status())
+    return JSONResponse(_groq_status())
 
 
 @app.post("/api/next_question")
@@ -345,7 +353,7 @@ async def api_next_question(request: Request):
 
     field_id = next_field_id(answers)
     if not field_id:
-        return JSONResponse({"done": True, "ollama": _gemini_status()})
+        return JSONResponse({"done": True, "ollama": _groq_status()})
 
     field = FIELD_MAP[field_id]
     if field_id == "product":
@@ -359,7 +367,7 @@ async def api_next_question(request: Request):
             "options": options,
             "total_steps": len(CATEGORY_FLOW),
             "answered_steps": sum(1 for f in CATEGORY_FLOW if has_value(answers, f["id"])),
-            "ollama": _gemini_status(),
+            "ollama": _groq_status(),
         }
         return JSONResponse(response_payload)
 
@@ -370,7 +378,7 @@ async def api_next_question(request: Request):
         "label": field["label"],
         "total_steps": len(CATEGORY_FLOW),
         "answered_steps": sum(1 for f in CATEGORY_FLOW if has_value(answers, f["id"])),
-        "ollama": _gemini_status(),
+        "ollama": _groq_status(),
     }
 
     if step.get("error"):
@@ -439,14 +447,14 @@ Rules:
             {
                 "output": "",
                 "error": result["error"],
-                "ollama": _gemini_status(),
+                "ollama": _groq_status(),
             }
         )
 
     return JSONResponse(
         {
             "output": result["text"],
-            "ollama": _gemini_status(),
+            "ollama": _groq_status(),
             "variant_engine": {
                 "headlines": 5,
                 "images": 3,

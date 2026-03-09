@@ -1,10 +1,10 @@
-brain = False  # True = Qwen / Ollama (app.py) | False = Gemini (appbc.py)
+brain = False  # True = Qwen / Ollama (app.py) | False = Groq (appbc.py)
 
 import subprocess
 import sys
 
 module = "app:app" if brain else "appbc:app"
-label = "Qwen / Ollama" if brain else "Gemini"
+label = "Qwen / Ollama" if brain else "Groq"
 
 print(f"[switch] Brain: {label}")
 print(f"[switch] Module: {module}")

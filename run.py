@@ -1,9 +1,13 @@
-brain = True  # True = Qwen / Ollama (app.py) | False = Groq (appbc:app)
-allow_groq_fallback = True  # False = strictly Ollama, no fallback | True = allow fallback to Groq
+from dotenv import load_dotenv
+import os
+
+load_dotenv()
+
+brain = os.getenv('BRAIN', 'True').lower() == 'true'  # True = Qwen / Ollama (app.py) | False = Groq (appbc:app)
+allow_groq_fallback = os.getenv('ALLOW_GROQ_FALLBACK', 'False').lower() == 'true'  # False = strictly Ollama, no fallback | True = allow fallback to Groq
 
 import subprocess
 import sys
-import os
 
 module = "app:app" if brain else "appbc:app"
 label = "Qwen / Ollama" if brain else "Groq"

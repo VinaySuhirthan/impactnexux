@@ -52,6 +52,7 @@ GROQ_ENABLED = bool(GROQ_API_KEY and GROQ_API_KEY.startswith("gsk_"))
 GROQ_RETRY_SECONDS = int(os.getenv("GROQ_RETRY_SECONDS", "5"))
 GROQ_DISABLED_UNTIL = 0.0
 GROQ_LAST_ERROR = ""
+GROQ_FALLBACK_ENABLED = os.getenv("GROQ_FALLBACK_ENABLED", "true").strip().lower() in {"1", "true", "yes", "on"}
 
 TOTAL_DYNAMIC_STEPS = 4
 
@@ -306,20 +307,20 @@ def ask_llm(prompt: str) -> Dict[str, Any]:
     global ACTIVE_MODEL
 
     if not OLLAMA_ENABLED:
-        if GROQ_ENABLED:
+        if GROQ_FALLBACK_ENABLED and GROQ_ENABLED:
             print("[BRAIN:LLM] Ollama disabled, using Groq")
             return ask_groq(prompt)
         return {
             "text": "",
             "model": ACTIVE_MODEL,
-            "error": "Ollama is disabled and Groq is not configured.",
+            "error": "Ollama is disabled and Groq fallback is disabled.",
         }
 
     now = time.time()
     if now < OLLAMA_DISABLED_UNTIL:
         wait_seconds = max(1, int(round(OLLAMA_DISABLED_UNTIL - now)))
         message = OLLAMA_LAST_ERROR or f"Ollama is cooling down. Retry in {wait_seconds}s."
-        if GROQ_ENABLED:
+        if GROQ_FALLBACK_ENABLED and GROQ_ENABLED:
             print(f"[BRAIN:LLM] {message}, falling back to Groq")
             return ask_groq(prompt)
         return {"text": "", "model": ACTIVE_MODEL, "error": message}
@@ -338,7 +339,7 @@ def ask_llm(prompt: str) -> Dict[str, Any]:
         
         if not text:
             _set_ollama_error("Empty response from Ollama", OLLAMA_RETRY_SECONDS)
-            if GROQ_ENABLED:
+            if GROQ_FALLBACK_ENABLED and GROQ_ENABLED:
                 print("[BRAIN:OLLAMA] Empty response, falling back to Groq")
                 return ask_groq(prompt)
             return {"text": "", "model": ACTIVE_MODEL, "error": "Empty response from Ollama"}
@@ -351,7 +352,7 @@ def ask_llm(prompt: str) -> Dict[str, Any]:
         error_msg = f"Ollama request failed: {str(e)}"
         print(f"[BRAIN:OLLAMA] {error_msg}")
         _set_ollama_error(error_msg, OLLAMA_RETRY_SECONDS)
-        if GROQ_ENABLED:
+        if GROQ_FALLBACK_ENABLED and GROQ_ENABLED:
             print("[BRAIN:OLLAMA] falling back to Groq")
             return ask_groq(prompt)
         return {"text": "", "model": ACTIVE_MODEL, "error": error_msg}
@@ -359,7 +360,7 @@ def ask_llm(prompt: str) -> Dict[str, Any]:
         error_msg = f"Unexpected error with Ollama: {str(e)}"
         print(f"[BRAIN:OLLAMA] {error_msg}")
         _set_ollama_error(error_msg, OLLAMA_RETRY_SECONDS)
-        if GROQ_ENABLED:
+        if GROQ_FALLBACK_ENABLED and GROQ_ENABLED:
             print("[BRAIN:OLLAMA] unexpected error, falling back to Groq")
             return ask_groq(prompt)
         return {"text": "", "model": ACTIVE_MODEL, "error": error_msg}

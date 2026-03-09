@@ -10,9 +10,20 @@ print(f"[switch] Brain: {label}")
 print(f"[switch] Module: {module}")
 print("[switch] Starting server on http://127.0.0.1:8000")
 
-subprocess.run([
+proc = subprocess.Popen([
     sys.executable, "-m", "uvicorn", module,
     "--reload",
     "--host", "127.0.0.1",
     "--port", "8000",
 ])
+
+try:
+    proc.wait()
+except KeyboardInterrupt:
+    print("[switch] Shutting down server...")
+    proc.terminate()
+    try:
+        proc.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        proc.wait()

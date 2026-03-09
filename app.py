@@ -38,7 +38,7 @@ OLLAMA_DISABLED_UNTIL = 0.0
 OLLAMA_LAST_ERROR = ""
 OLLAMA_AVAILABLE_MODELS: List[str] = []
 ACTIVE_MODEL = MODEL
-TOTAL_DYNAMIC_STEPS = 8
+TOTAL_DYNAMIC_STEPS = 4
 
 CATEGORY_FLOW = [
     {
@@ -260,7 +260,7 @@ Based on the following user answers, generate the next most important question t
 User answers so far:
 {json.dumps(answers, indent=2)}
 
-Generate a single question that will help refine the ad targeting and messaging. The question should be specific and actionable.
+Generate a single question that will help refine the ad targeting and messaging. The question should be specific and actionable, focusing on key aspects like target audience, unique value proposition, pain points, or competitive advantages.
 
 Return your response as a JSON object with:
 - "question": the question text (max 140 chars, ending with ?)
@@ -268,11 +268,11 @@ Return your response as a JSON object with:
 
 Example:
 {{
-  "question": "What is your target audience's age range?",
-  "options": ["18-24", "25-34", "35-44", "45-54", "55+"]
+  "question": "What is your target audience's primary pain point?",
+  "options": ["High costs", "Time waste", "Poor quality", "Lack of access", "Complex processes"]
 }}
 
-Make the question and options highly relevant to advertising and marketing.
+Make the question and options highly relevant to advertising and marketing, aiming to build a complete understanding efficiently.
 """.strip()
     
     result = ask_llm(prompt)

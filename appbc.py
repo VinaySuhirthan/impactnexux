@@ -10,8 +10,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 
 # ── Groq configuration ──────────────────────────────────────────────────────
-GROQ_API_KEY = "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"
-GROQ_MODEL = "llama-3.1-70b-versatile"
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
+GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.1-70b-versatile")
 
 # ── App ───────────────────────────────────────────────────────────────────────
 app = FastAPI()

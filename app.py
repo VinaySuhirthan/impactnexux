@@ -479,14 +479,14 @@ Answers so far:
 
 Ask ONE short strategic question about: {focus}.
 RULES:
-- Question MUST be under 15 words. Keep it short and direct.
+- Question MUST be 10 words or less. Keep it extremely punchy.
 - Provide exactly 5 answer options, each 2-6 words max.
 - Output ONLY the JSON below, nothing else.
 
 {{"question": "Short question here?", "options": ["Option A", "Option B", "Option C", "Option D", "Option E"]}}
 
 Example:
-{{"question": "Who is your primary target audience?", "options": ["Young professionals 25-34", "Small business owners", "Health-conscious parents", "Budget-conscious students", "Tech-savvy early adopters"]}}""".strip()
+{{"question": "Who is your primary target audience?", "options": ["Professionals", "Parents", "Students", "Business Owners", "Techies"]}}""" .strip()
 
     result = ask_llm(prompt)
     if result["error"]:

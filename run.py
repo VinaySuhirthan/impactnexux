@@ -9,8 +9,8 @@ allow_groq_fallback = os.getenv('ALLOW_GROQ_FALLBACK', 'False').lower() == 'true
 import subprocess
 import sys
 
-module = "app:app" if brain else "appbc:app"
-label = "Qwen / Ollama" if brain else "Groq"
+module = "question_mode.app:app" if brain else "question_mode.appbc:app"
+label = "Qwen / Ollama (via question_mode)" if brain else "Groq (via question_mode)"
 
 print(f"[switch] Brain: {label}")
 print(f"[switch] Module: {module}")

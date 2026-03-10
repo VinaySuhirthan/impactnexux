@@ -16,6 +16,11 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 import subprocess
 
+# Import chatbot router (assuming chatbot is a package in root)
+# We need to add parent to sys.path if running from within question_mode
+sys.path.append(str(Path(__file__).resolve().parent.parent))
+from chatbot.appbc import router as chatbot_router
+
 # ── Groq configuration ──────────────────────────────────────────────────────
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
@@ -31,23 +36,39 @@ app.add_middleware(
 )
 
 BASE_DIR = Path(__file__).resolve().parent
+ROOT_DIR = BASE_DIR.parent
 INDEX_FILE = BASE_DIR / "index.html"
 IMAGE_FILE = BASE_DIR / "image.html"
+MAIN_FILE = ROOT_DIR / "main.html"
 
 # Serve static files (generated images)
-if not os.path.exists("static/generated"):
-    os.makedirs("static/generated", exist_ok=True)
-app.mount("/static", StaticFiles(directory="static"), name="static")
+# Note: Since we are in a subfolder, we should use the ROOT static folder.
+if not os.path.exists(ROOT_DIR / "static" / "generated"):
+    os.makedirs(ROOT_DIR / "static" / "generated", exist_ok=True)
+app.mount("/static", StaticFiles(directory=ROOT_DIR / "static"), name="static")
 
 
 @app.get("/")
-async def get_index():
+async def get_main():
+    return FileResponse(MAIN_FILE)
+
+
+@app.get("/generator")
+async def get_generator():
     return FileResponse(INDEX_FILE)
 
 
 @app.get("/image")
 async def get_image_page():
     return FileResponse(IMAGE_FILE)
+
+@app.get("/chatbot")
+async def get_chatbot_page():
+    return FileResponse(ROOT_DIR / "chatbot" / "chat.html")
+
+# Include chatbot router
+app.include_router(chatbot_router)
+
 # ── State that mirrors app.py's "ollama" state (renamed to "groq") ──────────
 GROQ_ENABLED = (
     os.getenv("GROQ_ENABLED", "true").strip().lower() in {"1", "true", "yes", "on"}
@@ -222,7 +243,6 @@ def ask_llm(prompt: str) -> Dict[str, Any]:
     try:
         print(f"[BRAIN:GROQ] Sending REST prompt to '{GROQ_MODEL}' ({len(prompt)} chars)")
         print(f"[BRAIN:GROQ] Prompt preview: {prompt[:120].strip()!r}...")
-        print(f"[BRAIN:GROQ] API Key check: {GROQ_API_KEY[:20]}...")
         
         url = "https://api.groq.com/openai/v1/chat/completions"
         headers = {
@@ -236,11 +256,7 @@ def ask_llm(prompt: str) -> Dict[str, Any]:
             "max_tokens": 1024
         }
         
-        print(f"[BRAIN:GROQ] Requesting: {url}...")
         resp = requests.post(url, json=payload, headers=headers, timeout=90)
-        print(f"[BRAIN:GROQ] Status code: {resp.status_code}")
-        print(f"[BRAIN:GROQ] Response: {resp.text[:500]}")
-        
         resp.raise_for_status()
         data = resp.json()
         
@@ -263,10 +279,8 @@ def ask_llm(prompt: str) -> Dict[str, Any]:
         _set_groq_error(message, cooldown_seconds=GROQ_RETRY_SECONDS)
         return {"text": "", "model": ACTIVE_MODEL, "error": message}
     except Exception as exc:
-        import traceback
-        error_trace = traceback.format_exc()
         message = f"Groq error: {exc}"
-        print(f"[BRAIN:GROQ] Exception: {error_trace}")
+        print(f"[BRAIN:GROQ] Exception: {exc}")
         _set_groq_error(message, cooldown_seconds=GROQ_RETRY_SECONDS)
         return {"text": "", "model": ACTIVE_MODEL, "error": message}
 
@@ -319,7 +333,6 @@ Remaining steps:
         return {"error": result["error"], "model": result["model"]}
 
     raw_text = result["text"]
-    # Strip markdown code fences Gemini sometimes wraps around JSON
     raw_text = _re.sub(r"```(?:json)?\s*", "", raw_text).strip().strip("`")
 
     obj = _parse_json_object(raw_text)
@@ -365,14 +378,8 @@ Original output:
 
 # ── Routes ────────────────────────────────────────────────────────────────────
 
-@app.get("/")
-def index() -> FileResponse:
-    return FileResponse(INDEX_FILE)
-
-
 @app.get("/api/ollama_status")
 def api_ollama_status():
-    """Kept as /api/ollama_status so the frontend doesn't need changes."""
     return JSONResponse(_groq_status())
 
 
@@ -520,31 +527,15 @@ async def api_generate_image(request: Request):
         return JSONResponse({"error": "No prompt provided"}, status_code=400)
 
     try:
-        # Run imagegen.py as a subprocess
-        # We pass the prompt as an argument. imagegen.py will print JSON result to stdout.
-        print(f"[BACKEND] Executing imagegen.py with prompt length: {len(prompt)}")
+        # Run imagegen.py as a subprocess (at root)
         result = subprocess.run(
-            [sys.executable, "imagegen.py", prompt],
+            [sys.executable, str(ROOT_DIR / "imagegen.py"), prompt],
             capture_output=True,
             text=True,
             check=True,
             encoding="utf-8"
         )
         
-        # Print the logs from the script to the terminal for debugging
-        if result.stdout:
-            print("\n--- imagegen.py STDOUT ---")
-            print(result.stdout)
-            print("--------------------------\n")
-        
-        if result.stderr:
-            print("\n--- imagegen.py STDERR ---")
-            print(result.stderr)
-            print("--------------------------\n")
-            
-        # Parse the JSON output from the script
-        # Note: imagegen.py might print debug info before the JSON. 
-        # We need to find the line that starts with {"images":
         output_lines = result.stdout.strip().split("\n")
         json_str = None
         for line in output_lines:
@@ -553,17 +544,12 @@ async def api_generate_image(request: Request):
                 break
         
         if json_str is None:
-            print("[ERROR] Could not find JSON output in imagegen.py response.")
             return JSONResponse({"error": "Invalid output format from generator"}, status_code=500)
 
         output_data = json.loads(json_str)
         return JSONResponse(output_data)
 
     except subprocess.CalledProcessError as e:
-        print(f"[ERROR] imagegen.py exited with code {e.returncode}")
-        print(f"STDOUT: {e.stdout}")
-        print(f"STDERR: {e.stderr}")
         return JSONResponse({"error": f"Generation failed: {e.stderr}"}, status_code=500)
     except Exception as e:
-        print(f"Server error: {str(e)}")
         return JSONResponse({"error": str(e)}, status_code=500)

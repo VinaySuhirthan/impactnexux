@@ -62,6 +62,10 @@ async def get_generator():
 async def get_image_page():
     return FileResponse(IMAGE_FILE)
 
+@app.get("/logo.jpeg")
+async def get_logo():
+    return FileResponse(ROOT_DIR / "logo.jpeg")
+
 @app.get("/chatbot")
 async def get_chatbot_page():
     return FileResponse(ROOT_DIR / "chatbot" / "chat.html")
@@ -552,4 +556,59 @@ async def api_generate_image(request: Request):
     except subprocess.CalledProcessError as e:
         return JSONResponse({"error": f"Generation failed: {e.stderr}"}, status_code=500)
     except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.post("/api/generate_video")
+async def api_generate_video(request: Request):
+    payload = await request.json()
+    prompt = payload.get("prompt", "")
+    image_path = payload.get("image_path", "")
+
+    if not prompt:
+        return JSONResponse({"error": "No prompt provided"}, status_code=400)
+
+    try:
+        # Construct command
+        cmd = [sys.executable, str(ROOT_DIR / "videogen.py"), prompt]
+        if image_path:
+            # If image_path is absolute, use it; otherwise, relative to ROOT_DIR
+            abs_img_path = str(ROOT_DIR / image_path) if not os.path.isabs(image_path) else image_path
+            cmd.extend(["--images", abs_img_path])
+
+        print(f"[VIDEO] Running: {' '.join(cmd)}")
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            check=True,
+            encoding="utf-8",
+            cwd=str(ROOT_DIR) # Run from root where videogen.py expect libraries and saves files
+        )
+
+        # videogen.py saves to "final_ad_film.mp4" in its CWD.
+        # We should move it to static/generated/ for serving.
+        video_output_name = "final_ad_film.mp4"
+        output_src = ROOT_DIR / video_output_name
+        
+        if not output_src.exists():
+            print(f"[VIDEO] Error: Output file {output_src} not found. Stdout: {result.stdout}")
+            return JSONResponse({"error": "Video generation script completed but output file missing"}, status_code=500)
+
+        # Move to static/generated
+        timestamp = int(time.time())
+        new_filename = f"video_{timestamp}.mp4"
+        dest_path = ROOT_DIR / "static" / "generated" / new_filename
+        os.rename(output_src, dest_path)
+
+        return JSONResponse({
+            "video_url": f"/static/generated/{new_filename}",
+            "message": "Video generated successfully"
+        })
+
+    except subprocess.CalledProcessError as e:
+        print(f"[VIDEO] Script failed: {e.stderr}")
+        return JSONResponse({"error": f"Video generation failed: {e.stderr}"}, status_code=500)
+    except Exception as e:
+        print(f"[VIDEO] Error: {str(e)}")
         return JSONResponse({"error": str(e)}, status_code=500)

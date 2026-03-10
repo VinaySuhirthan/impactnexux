@@ -233,28 +233,65 @@ def create_poster(image, headline, tagline, cta, index=0, output_dir="static/gen
     base = Image.alpha_composite(base, radial_vignette((W,H), theme["vignette_strength"]))
     
     draw = ImageDraw.Draw(base)
-    fhl = load_font(86, bold=True); ftl = load_font(42); fcta = load_font(46, bold=True); fbrand = load_font(28)
-    max_w = int(W * 0.82)
-    hl_lines = wrap_text(headline.upper(), fhl, max_w, draw)
-    tl_lines = wrap_text(tagline, ftl, max_w, draw)
+    # Safe padding so text never bleeds to the edges
+    pad = int(W * 0.07)          # 7% padding on each side
+    max_w = W - 2 * pad         # usable text width
+
+    # Auto-shrink headline font so it wraps to at most 4 lines
+    hl_font_size = 68
+    while hl_font_size >= 32:
+        fhl = load_font(hl_font_size, bold=True)
+        hl_lines = wrap_text(headline.upper(), fhl, max_w, draw)
+        if len(hl_lines) <= 4:
+            break
+        hl_font_size -= 4
+
+    # Auto-shrink tagline font so it wraps to at most 3 lines
+    tl_font_size = 36
+    while tl_font_size >= 20:
+        ftl = load_font(tl_font_size)
+        tl_lines = wrap_text(tagline, ftl, max_w, draw)
+        if len(tl_lines) <= 3:
+            break
+        tl_font_size -= 2
+
+    # Auto-shrink CTA font so button fits within image width
+    cta_font_size = 42
+    while cta_font_size >= 22:
+        fcta = load_font(cta_font_size, bold=True)
+        bb = draw.textbbox((0, 0), cta.upper(), font=fcta)
+        if (bb[2] - bb[0]) + 2 * 54 <= max_w:
+            break
+        cta_font_size -= 2
+
+    fbrand = load_font(28)
 
     print(f"[DEBUG] Drawing components for {theme['layout']} layout...")
-    cx = W//2
+    cx = W // 2
+
     if theme["layout"] == "centered":
-        y = int(H*0.4); y += draw_accent(draw, theme["accent_style"], cx, y, theme["accent_color"], W) + 32
-        y = draw_text_block(draw, hl_lines, fhl, cx, y, theme["headline_color"], "center", 1.15) + 40
-        y = draw_text_block(draw, tl_lines, ftl, cx, y, theme["tagline_color"], "center", 1.3) + 60
+        y = int(H * 0.38)
+        y += draw_accent(draw, theme["accent_style"], cx, y, theme["accent_color"], W) + 28
+        y = draw_text_block(draw, hl_lines, fhl, cx, y, theme["headline_color"], "center", 1.15) + 32
+        y = draw_text_block(draw, tl_lines, ftl, cx, y, theme["tagline_color"], "center", 1.25) + 48
         draw_cta_button(draw, cx, y, cta.upper(), fcta, theme["btn_color"], theme["btn_text_color"])
+
     elif theme["layout"] == "left_aligned":
-        mg = int(W*0.1); y = int(H*0.35)
-        y = draw_text_block(draw, hl_lines, fhl, mg, y, theme["headline_color"], "left", 1.15) + 30
-        y = draw_text_block(draw, tl_lines, ftl, mg, y, theme["tagline_color"], "left", 1.3) + 50
-        draw_cta_button(draw, mg + 150, y, cta.upper(), fcta, theme["btn_color"], theme["btn_text_color"])
+        # Left edge of text block is 'pad'; CTA is centred in the same zone
+        left_x = pad
+        content_cx = pad + max_w // 2   # centre of the content zone
+        y = int(H * 0.33)
+        y = draw_text_block(draw, hl_lines, fhl, left_x, y, theme["headline_color"], "left", 1.15) + 28
+        y = draw_text_block(draw, tl_lines, ftl, left_x, y, theme["tagline_color"], "left", 1.25) + 44
+        draw_cta_button(draw, content_cx, y, cta.upper(), fcta, theme["btn_color"], theme["btn_text_color"])
+
     elif theme["layout"] == "bottom_heavy":
-        y = int(H*0.15)
-        y = draw_text_block(draw, hl_lines, fhl, cx, y, theme["headline_color"], "center", 1.15) + 30
-        draw_text_block(draw, tl_lines, ftl, cx, y, theme["tagline_color"], "center", 1.3)
-        draw_cta_button(draw, cx, H-150, cta.upper(), fcta, theme["btn_color"], theme["btn_text_color"])
+        y = int(H * 0.15)
+        y = draw_text_block(draw, hl_lines, fhl, cx, y, theme["headline_color"], "center", 1.15) + 28
+        y = draw_text_block(draw, tl_lines, ftl, cx, y, theme["tagline_color"], "center", 1.25) + 44
+        # Place CTA just below tagline but cap so it doesn't overflow bottom
+        cta_y = min(y, H - 160)
+        draw_cta_button(draw, cx, cta_y, cta.upper(), fcta, theme["btn_color"], theme["btn_text_color"])
 
     if not os.path.exists(output_dir): 
         print(f"[DEBUG] Creating directory: {output_dir}")

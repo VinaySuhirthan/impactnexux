@@ -919,6 +919,8 @@ function showQuestion(data) {
   doneBanner.classList.remove("show");
   genBtn.style.display = "none";
   backBtn.style.display = state.history.length > 0 ? "" : "none";
+  backBtn.disabled = false;
+  backBtn.innerHTML = "← Back";
   nextBtn.style.display = "";
   nextBtn.disabled = false;
   nextBtn.innerHTML = "Next Question →";
@@ -983,6 +985,8 @@ function showReadyToGenerate(meta) {
 
   doneBanner.classList.add("show");
   backBtn.style.display = "";
+  backBtn.disabled = false;
+  backBtn.innerHTML = "← Back";
   nextBtn.style.display = "none";
   retryBtn.style.display = "none";
   genBtn.style.display = "";

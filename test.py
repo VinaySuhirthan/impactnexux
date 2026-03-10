@@ -18,7 +18,7 @@ Hello, can you tell me what 2+2 equals?
 
     # Request payload
     payload = {
-        "model": "qwen3.5:9b",
+        "model": "qwen3:4b",
         "prompt": prompt,
         "stream": False,  # Set to True for streaming responses
         "options": {

@@ -162,6 +162,29 @@ def _clean_options(values: Any) -> List[str]:
     return cleaned
 
 
+def _fallback_extract_qa(text: str) -> Optional[Dict[str, Any]]:
+    """Try to extract question and options from plain text when JSON parsing fails."""
+    if not text:
+        return None
+    lines = [l.strip() for l in text.strip().splitlines() if l.strip()]
+    question = ""
+    options = []
+    for line in lines:
+        if line.endswith("?") and not question:
+            question = line.lstrip("- *#").strip()
+        elif _re.match(r'^[\d]+[.)\-]\s+', line):
+            opt = _re.sub(r'^[\d]+[.)\-]\s+', '', line).strip().strip('"\'')
+            if 2 <= len(opt) <= 80:
+                options.append(opt)
+        elif line.startswith(("-", "•", "*")) and not line.endswith("?"):
+            opt = line.lstrip("-•* ").strip().strip('"\'')
+            if 2 <= len(opt) <= 80:
+                options.append(opt)
+    if question and len(options) >= 2:
+        return {"question": question, "options": options[:5]}
+    return None
+
+
 # ── Ollama error state helpers ────────────────────────────────────────────────
 
 def _set_ollama_error(message: str, cooldown_seconds: Optional[int] = None) -> None:
@@ -278,7 +301,7 @@ def ask_groq(prompt: str) -> Dict[str, Any]:
             "temperature":0.7,
             "max_tokens":1024,
         }
-        resp = requests.post(url, json=payload, headers=headers, timeout=90)
+        resp = requests.post(url, json=payload, headers=headers, timeout=30)
         resp.raise_for_status()
         data = resp.json()
         try:
@@ -329,8 +352,14 @@ def ask_llm(prompt: str) -> Dict[str, Any]:
         print(f"[BRAIN:OLLAMA] Sending REST prompt to '{MODEL}' ({len(prompt)} chars)")
         print(f"[BRAIN:OLLAMA] Prompt preview: {prompt[:120].strip()!r}...")
         
-        payload = {"model": MODEL, "prompt": prompt, "stream": False}
-        resp = requests.post(OLLAMA_URL, json=payload, timeout=90)
+        payload = {
+            "model": MODEL,
+            "prompt": prompt,
+            "stream": False,
+            "think": False,
+            "options": {"num_predict": 1024},
+        }
+        resp = requests.post(OLLAMA_URL, json=payload, timeout=30)
         resp.raise_for_status()
         
         data = resp.json()
@@ -433,43 +462,50 @@ async def api_next_question(request: Request):
             "ollama": _ollama_status(),
         })
     
-    # Dynamic question
-    prompt = f"""
-You are an expert marketing strategist helping create targeted advertising campaigns.
+    # Dynamic question — MBA/IIM-level marketing strategy
+    step_num = len([k for k in answers if has_value(answers, k)]) + 1
+    step_topics = {
+        1: "target market segmentation (demographics, psychographics, behavioral)",
+        2: "unique selling proposition and competitive positioning",
+        3: "customer pain points and emotional triggers",
+        4: "brand voice, tone, and campaign objectives",
+    }
+    focus = step_topics.get(step_num, "campaign differentiation and call-to-action strategy")
 
-Based on the following user answers, generate the next most important question to ask for creating effective ad copy.
+    prompt = f"""You are a senior marketing strategist. The user is building an ad campaign.
 
-User answers so far:
-{json.dumps(answers, indent=2)}
+Answers so far:
+{json.dumps(answers)}
 
-Generate a single question that will help refine the ad targeting and messaging. The question should be specific and actionable, focusing on key aspects like target audience, unique value proposition, pain points, or competitive advantages.
+Ask ONE short strategic question about: {focus}.
+RULES:
+- Question MUST be under 15 words. Keep it short and direct.
+- Provide exactly 5 answer options, each 2-6 words max.
+- Output ONLY the JSON below, nothing else.
 
-Return your response as a JSON object with:
-- "question": the question text (max 140 chars, ending with ?)
-- "options": array of 5 specific answer options (each 2-50 chars)
+{{"question": "Short question here?", "options": ["Option A", "Option B", "Option C", "Option D", "Option E"]}}
 
 Example:
-{{
-  "question": "What is your target audience's primary pain point?",
-  "options": ["High costs", "Time waste", "Poor quality", "Lack of access", "Complex processes"]
-}}
+{{"question": "Who is your primary target audience?", "options": ["Young professionals 25-34", "Small business owners", "Health-conscious parents", "Budget-conscious students", "Tech-savvy early adopters"]}}""".strip()
 
-Make the question and options highly relevant to advertising and marketing, aiming to build a complete understanding efficiently.
-""".strip()
-    
     result = ask_llm(prompt)
     if result["error"]:
         return JSONResponse({"error": result["error"], "ollama": _ollama_status()})
-    
+
     text = result["text"]
+    # Try JSON first, then fallback to text extraction
     obj = _parse_json_object(text)
     if not obj:
+        obj = _fallback_extract_qa(text)
+    if not obj:
+        print(f"[BRAIN:PARSE] Failed to parse LLM output: {text[:300]!r}")
         return JSONResponse({"error": "Failed to parse LLM response", "ollama": _ollama_status()})
-    
+
     question = sanitize_question(obj.get("question", ""))
     options = _clean_options(obj.get("options", []))
-    
+
     if not question or len(options) < 2:
+        print(f"[BRAIN:PARSE] Bad question/options: q={question!r} opts={options!r}")
         return JSONResponse({"error": "Invalid question/options from LLM", "ollama": _ollama_status()})
     
     return JSONResponse({
@@ -492,43 +528,48 @@ async def api_generate_assets(request: Request):
     if not answers:
         return JSONResponse({"error": "No answers provided"})
     
-    prompt = f"""
-You are a professional copywriter creating advertising assets.
+    # Build a clean summary of answers (exclude raw custom text markers)
+    clean_answers = {}
+    for k, v in answers.items():
+        if v and isinstance(v, str) and v.strip():
+            clean_answers[k] = v.strip()
 
-Based on the following user answers, generate compelling ad copy including headlines, taglines, and CTAs.
+    prompt = f"""You are an expert advertising copywriter.
 
-User answers:
-{json.dumps(answers, indent=2)}
+Campaign brief:
+{json.dumps(clean_answers)}
 
-Generate:
-- 5 Headlines (each 5-30 words)
-- 5 Taglines (each 3-10 words)  
-- 5 Call-to-Action phrases (each 2-8 words)
-- 5 Image prompt descriptions (each 10-50 words for AI image generation)
+Create compelling, professional ad copy. Output EXACTLY this format:
 
-Format your response as:
 HEADLINES:
-1. Headline one
-2. Headline two
-...
+1. [5-30 word headline]
+2. [5-30 word headline]
+3. [5-30 word headline]
+4. [5-30 word headline]
+5. [5-30 word headline]
 
 TAGLINES:
-1. Tagline one
-2. Tagline two
-...
+1. [3-10 word tagline]
+2. [3-10 word tagline]
+3. [3-10 word tagline]
+4. [3-10 word tagline]
+5. [3-10 word tagline]
 
 CTAS:
-1. CTA one
-2. CTA two
-...
+1. [2-8 word call-to-action]
+2. [2-8 word call-to-action]
+3. [2-8 word call-to-action]
+4. [2-8 word call-to-action]
+5. [2-8 word call-to-action]
 
 IMAGE_PROMPTS:
-1. Image prompt one
-2. Image prompt two
-...
+1. [10-50 word visual description for AI image generation]
+2. [10-50 word visual description for AI image generation]
+3. [10-50 word visual description for AI image generation]
+4. [10-50 word visual description for AI image generation]
+5. [10-50 word visual description for AI image generation]
 
-Make everything highly targeted and persuasive for advertising.
-""".strip()
+Make each item unique, persuasive, and specific to the product.""".strip()
     
     result = ask_llm(prompt)
     if result["error"]:

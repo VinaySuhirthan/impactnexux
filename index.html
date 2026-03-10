@@ -730,6 +730,59 @@
       flex-shrink: 0;
     }
 
+    .asset-card.ready {
+      border-color: var(--black);
+      cursor: pointer;
+    }
+
+    .asset-card.ready:hover {
+      background: var(--gray-6);
+    }
+
+    .asset-card.loading .asset-icon-box {
+      animation: pulse 1.5s infinite;
+    }
+
+    @keyframes pulse {
+      0% {
+        opacity: 1;
+      }
+
+      50% {
+        opacity: 0.4;
+      }
+
+      100% {
+        opacity: 1;
+      }
+    }
+
+    .generated-imgs {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin-top: 12px;
+      width: 100%;
+    }
+
+    .gen-img {
+      width: 100%;
+      aspect-ratio: 1;
+      border-radius: 6px;
+      object-fit: cover;
+      border: 1px solid var(--gray-5);
+    }
+
+    .soon-chip.ready {
+      background: #e6fcf5;
+      color: #0ca678;
+      border-color: #c3fae8;
+    }
+
+    .soon-chip.ready svg {
+      stroke: #0ca678;
+    }
+
     /* ── DESKTOP: side-by-side ── */
     @media(min-width:768px) {
       .app {
@@ -898,7 +951,7 @@
       <div class="s-section" id="assetCardsSection" style="display:none">
         <div class="s-label">Create Assets</div>
         <div class="asset-cards">
-          <div class="asset-card">
+          <div class="asset-card" id="imgGenCard">
             <div class="asset-icon-box">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#555" stroke-width="2"
                 stroke-linecap="round" stroke-linejoin="round">
@@ -909,20 +962,22 @@
             </div>
             <div class="asset-info">
               <div class="asset-title">Generate Image</div>
-              <div class="soon-chip">
+              <div class="soon-chip" id="imgSoonChip">
                 <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
                   <circle cx="12" cy="12" r="10" />
                   <polyline points="12 6 12 12 16 14" />
                 </svg>
-                Coming Soon
+                <span id="imgSoonText">Coming Soon</span>
               </div>
             </div>
-            <button class="asset-lock-btn" disabled>
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <button class="asset-lock-btn" id="imgGenBtn" disabled onclick="onGenerateImage()">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                id="imgLockIcon">
                 <rect x="3" y="11" width="18" height="11" rx="2" />
                 <path d="M7 11V7a5 5 0 0 1 10 0v4" />
               </svg>
             </button>
+            <div id="imgResultRow" class="generated-imgs" style="display:none"></div>
           </div>
 
           <div class="asset-card">
@@ -977,6 +1032,12 @@
     const output = document.getElementById("output");
     const genBtn = document.getElementById("genBtn");
     const assetCardsSection = document.getElementById("assetCardsSection");
+    const imgGenCard = document.getElementById("imgGenCard");
+    const imgGenBtn = document.getElementById("imgGenBtn");
+    const imgSoonChip = document.getElementById("imgSoonChip");
+    const imgSoonText = document.getElementById("imgSoonText");
+    const imgLockIcon = document.getElementById("imgLockIcon");
+    const imgResultRow = document.getElementById("imgResultRow");
     const statusDot = document.getElementById("statusDot");
     const statusText = document.getElementById("statusText");
 
@@ -1222,6 +1283,50 @@
       state.mode = "generate";
       genBtn.disabled = false;
       genBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.5"/></svg> Regenerate`;
+
+      // Unlock Image Generation
+      imgGenBtn.disabled = false;
+      imgGenCard.classList.add("ready");
+      imgSoonChip.classList.add("ready");
+      imgSoonText.textContent = "Ready";
+      imgLockIcon.innerHTML = `<polyline points="20 6 9 17 4 12" />`; // checkmark or just change style
+    }
+
+    async function onGenerateImage() {
+      if (imgGenBtn.disabled) return;
+      const promptText = output.textContent;
+      if (!promptText || promptText.startsWith("Ad copy will appear")) {
+        showError("Please generate ad assets first.");
+        return;
+      }
+
+      imgGenBtn.disabled = true;
+      imgGenCard.classList.add("loading");
+      imgSoonText.textContent = "Generating...";
+
+      try {
+        const data = await api("/api/generate_image", { prompt: promptText });
+        imgGenCard.classList.remove("loading");
+
+        if (data.error) {
+          showError("Image generation failed: " + data.error);
+          imgSoonText.textContent = "Failed";
+          imgGenBtn.disabled = false;
+        } else if (data.images && data.images.length > 0) {
+          imgSoonText.textContent = "Complete";
+          imgResultRow.style.display = "grid";
+          imgResultRow.innerHTML = data.images.map(src => `<img src="/${src}" class="gen-img" alt="Ad Image" />`).join("");
+        } else {
+          showError("No images were generated.");
+          imgSoonText.textContent = "No data";
+          imgGenBtn.disabled = false;
+        }
+      } catch (err) {
+        imgGenCard.classList.remove("loading");
+        imgGenBtn.disabled = false;
+        showError("Error connecting to image generation service.");
+        imgSoonText.textContent = "Error";
+      }
     }
 
     renderBrief();

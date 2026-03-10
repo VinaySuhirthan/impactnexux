@@ -1,6 +1,7 @@
 from pathlib import Path
 import json
 import os
+import sys
 import re as _re
 import time
 from typing import Any, Dict, List, Optional
@@ -12,6 +13,8 @@ from dotenv import load_dotenv
 # Load environment variables from .env file
 load_dotenv()
 from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
+import subprocess
 
 # ── Groq configuration ──────────────────────────────────────────────────────
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
@@ -29,6 +32,11 @@ app.add_middleware(
 
 BASE_DIR = Path(__file__).resolve().parent
 INDEX_FILE = BASE_DIR / "index.html"
+
+# Serve static files (generated images)
+if not os.path.exists("static/generated"):
+    os.makedirs("static/generated", exist_ok=True)
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # ── State that mirrors app.py's "ollama" state (renamed to "groq") ──────────
 GROQ_ENABLED = (
@@ -492,3 +500,33 @@ Rules:
             },
         }
     )
+
+
+@app.post("/api/generate_image")
+async def api_generate_image(request: Request):
+    payload = await request.json()
+    prompt = payload.get("prompt", "")
+    if not prompt:
+        return JSONResponse({"error": "No prompt provided"}, status_code=400)
+
+    try:
+        # Run imagegen.py as a subprocess
+        # We pass the prompt as an argument. imagegen.py will print JSON result to stdout.
+        result = subprocess.run(
+            [sys.executable, "imagegen.py", prompt],
+            capture_output=True,
+            text=True,
+            check=True,
+            encoding="utf-8"
+        )
+        
+        # Parse the JSON output from the script
+        output_data = json.loads(result.stdout)
+        return JSONResponse(output_data)
+
+    except subprocess.CalledProcessError as e:
+        print(f"Error running imagegen.py: {e.stderr}")
+        return JSONResponse({"error": f"Generation failed: {e.stderr}"}, status_code=500)
+    except Exception as e:
+        print(f"Server error: {str(e)}")
+        return JSONResponse({"error": str(e)}, status_code=500)

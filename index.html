@@ -1314,8 +1314,19 @@
           imgGenBtn.disabled = false;
         } else if (data.images && data.images.length > 0) {
           imgSoonText.textContent = "Complete";
+
+          // Prepend / to each image path for absolute serving
+          const formattedImages = data.images.map(src => src.startsWith('/') ? src : '/' + src);
+
+          // Save to localStorage
+          localStorage.setItem("generated_images", JSON.stringify(formattedImages));
+
+          // Simple row preview
           imgResultRow.style.display = "grid";
-          imgResultRow.innerHTML = data.images.map(src => `<img src="/${src}" class="gen-img" alt="Ad Image" />`).join("");
+          imgResultRow.innerHTML = formattedImages.map(src => `<img src="${src}" class="gen-img" alt="Ad Image" />`).join("");
+
+          // Redirect to the new gallery page
+          window.location.href = "/image";
         } else {
           showError("No images were generated.");
           imgSoonText.textContent = "No data";

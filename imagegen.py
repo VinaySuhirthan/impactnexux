@@ -6,9 +6,14 @@ import math
 import sys
 import json
 import os
+import re as _re
+from dotenv import load_dotenv
 
-HF_API_KEY = "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"
-MODEL_URL = "https://router.huggingface.co/hf-inference/models/stabilityai/stable-diffusion-xl-base-1.0"
+# Load environment variables
+load_dotenv()
+
+HF_API_KEY = os.getenv("HF_API_KEY")
+MODEL_URL = "https://router.huggingface.co/hf-inference/models/black-forest-labs/FLUX.1-schnell"
 headers = {"Authorization": f"Bearer {HF_API_KEY}"}
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -67,32 +72,55 @@ THEMES = [
 
 def generate_image(prompt):
     payload  = {"inputs": prompt}
-    response = requests.post(MODEL_URL, headers=headers, json=payload)
-    if response.status_code != 200:
+    print(f"[DEBUG] Calling HF API for prompt: {prompt[:50]}...")
+    try:
+        response = requests.post(MODEL_URL, headers=headers, json=payload, timeout=60)
+        if response.status_code != 200:
+            print(f"[ERROR] HF API returned status {response.status_code}")
+            print(f"[ERROR] Response: {response.text}")
+            return None
+        return Image.open(io.BytesIO(response.content))
+    except Exception as e:
+        print(f"[ERROR] Exception during HF API call: {str(e)}")
         return None
-    return Image.open(io.BytesIO(response.content))
 
 def parse_prompt(big_prompt):
+    # Handle literal '\n' strings that might come from CLI arguments
+    big_prompt = big_prompt.replace("\\n", "\n")
+    print(f"\n[DEBUG] Parsing prompt (length: {len(big_prompt)} characters)")
+    
     headlines, taglines, ctas, image_prompts = [], [], [], []
-    section = None
-    for line in big_prompt.split("\n"):
+    current_section = None
+    
+    lines = big_prompt.split("\n")
+    for line in lines:
         line = line.strip()
         if not line: continue
-        if "HEADLINES" in line.upper(): section = "headline"; continue
-        if "TAGLINES" in line.upper(): section = "tagline"; continue
-        if "CTAS" in line.upper(): section = "cta"; continue
-        if "IMAGE_PROMPTS" in line.upper(): section = "image"; continue
         
-        m = math.nan # placeholder
-        if line[0:1].isdigit() and ". " in line:
-            text = line.split(". ", 1)[1]
-            if section == "headline": headlines.append(text)
-            elif section == "tagline": taglines.append(text)
-            elif section == "cta": ctas.append(text)
-            elif section == "image": image_prompts.append(text)
+        # Check for section markers
+        up = line.upper()
+        if "HEADLINE" in up: current_section = "headline"
+        elif "TAGLINE" in up: current_section = "tagline"
+        elif "CTA" in up: current_section = "cta"
+        elif "IMAGE" in up: current_section = "image"
+        
+        # Extract numbered items (e.g., "1. text" or "Headline: 1. text")
+        # Regex to find anything like "1. text"
+        match = _re.search(r'\d+\.\s+(.*)', line)
+        if match:
+            text = match.group(1).strip()
+            if current_section == "headline": headlines.append(text)
+            elif current_section == "tagline": taglines.append(text)
+            elif current_section == "cta": ctas.append(text)
+            elif current_section == "image": 
+                print(f"[DEBUG] Found image prompt: {str(text)[:50]}...")
+                image_prompts.append(text)
+    
+    print(f"[DEBUG] Parser complete: {len(headlines)} headlines, {len(image_prompts)} image prompts found.")
     return headlines, taglines, ctas, image_prompts
 
 def load_font(size, bold=False):
+    print(f"[DEBUG] Loading font (size: {size}, bold: {bold})")
     candidates = (
         ["arialbd.ttf", "arial.ttf"] if bold else ["arial.ttf"]
     )
@@ -137,11 +165,11 @@ def block_h(lines, font, spacing=1.2):
     return h_sum
 
 def vertical_gradient(size, top, bottom):
-    w, h = size
-    g = Image.new("RGBA", size)
+    w, h = int(size[0]), int(size[1])
+    g = Image.new("RGBA", (w, h))
     for y in range(h):
-        t = y / (h-1)
-        c = tuple(int(top[i]+t*(bottom[i]-top[i])) for i in range(4))
+        t = y / (h - 1) if h > 1 else 0
+        c = tuple(int(top[i] + t * (bottom[i] - top[i])) for i in range(4))
         for x in range(w): g.putpixel((x, y), c)
     return g
 
@@ -192,11 +220,14 @@ def draw_cta_button(draw, cx, y, text, font, btn_color, text_color, px=54, py=20
     return bh
 
 def create_poster(image, headline, tagline, cta, index=0, output_dir="static/generated"):
+    print(f"\n[DEBUG] Starting generation of Ad {index+1}")
     W, H = 1080, 1080
     theme = THEMES[index % len(THEMES)]
+    print(f"[DEBUG] Theme: {theme['name']} | Layout: {theme['layout']}")
     base = image.resize((W, H), Image.LANCZOS).convert("RGBA")
     
     # Apply layers
+    print("[DEBUG] Applying gradient and vignette effects...")
     base = Image.alpha_composite(base, vertical_gradient((W,H), theme["overlay_top"], (0,0,0,0)))
     base = Image.alpha_composite(base, vertical_gradient((W,H), (0,0,0,0), theme["overlay_bottom"]))
     base = Image.alpha_composite(base, radial_vignette((W,H), theme["vignette_strength"]))
@@ -207,6 +238,7 @@ def create_poster(image, headline, tagline, cta, index=0, output_dir="static/gen
     hl_lines = wrap_text(headline.upper(), fhl, max_w, draw)
     tl_lines = wrap_text(tagline, ftl, max_w, draw)
 
+    print(f"[DEBUG] Drawing components for {theme['layout']} layout...")
     cx = W//2
     if theme["layout"] == "centered":
         y = int(H*0.4); y += draw_accent(draw, theme["accent_style"], cx, y, theme["accent_color"], W) + 32
@@ -224,32 +256,48 @@ def create_poster(image, headline, tagline, cta, index=0, output_dir="static/gen
         draw_text_block(draw, tl_lines, ftl, cx, y, theme["tagline_color"], "center", 1.3)
         draw_cta_button(draw, cx, H-150, cta.upper(), fcta, theme["btn_color"], theme["btn_text_color"])
 
-    if not os.path.exists(output_dir): os.makedirs(output_dir)
+    if not os.path.exists(output_dir): 
+        print(f"[DEBUG] Creating directory: {output_dir}")
+        os.makedirs(output_dir)
     filename = f"ad_{index+1}_{int(time.time())}.png"
     filepath = os.path.join(output_dir, filename)
+    print(f"[DEBUG] Saving image to: {filepath}")
     base.convert("RGB").save(filepath, quality=95)
     return filepath
 
 if __name__ == "__main__":
+    print("\n" + "="*40)
+    print("IMAGEGEN.PY - Ad Generation Starting")
+    print("="*40)
     if len(sys.argv) < 2:
-        print("Usage: python imagegen.py <prompt_file_or_text>")
+        print("[ERROR] No input prompt provided.")
         sys.exit(1)
     
     input_text = sys.argv[1]
     if os.path.exists(input_text):
+        print(f"[DEBUG] Loading prompt from file: {input_text}")
         with open(input_text, "r", encoding="utf-8") as f:
             big_prompt = f.read()
     else:
+        print("[DEBUG] Using prompt from command line argument.")
         big_prompt = input_text
 
     headlines, taglines, ctas, image_prompts = parse_prompt(big_prompt)
     count = min(len(headlines), len(taglines), len(ctas), len(image_prompts))
+    print(f"[DEBUG] Processing {count} ad variants.")
     
     results = []
     for i in range(count):
+        print(f"\n[DEBUG] Fetching background image from Hugging Face for Ad {i+1}...")
         img = generate_image(image_prompts[i])
         if img:
+            print(f"[SUCCESS] Image received for Ad {i+1}")
             path = create_poster(img, headlines[i], taglines[i], ctas[i], index=i)
             results.append(path.replace("\\", "/"))
+        else:
+            print(f"[FAILED] Hugging Face API did not return an image for Ad {i+1}")
     
+    print("\n" + "="*40)
+    print("FINAL JSON OUTPUT (Required by backend):")
     print(json.dumps({"images": results}))
+    print("="*40)

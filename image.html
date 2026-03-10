@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AdGPT - Generated Posters</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --white: #ffffff;
+            --black: #000000;
+            --gray-1: #111111;
+            --gray-2: #222222;
+            --gray-3: #444444;
+            --gray-4: #888888;
+            --gray-5: #e0e0e0;
+            --gray-6: #f5f5f5;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Inter', -apple-system, sans-serif;
+        }
+
+        body {
+            background: var(--white);
+            color: var(--black);
+            line-height: 1.5;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        .header {
+            position: sticky;
+            top: 0;
+            background: rgba(255, 255, 255, 0.9);
+            backdrop-filter: blur(12px);
+            padding: 16px;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            border-bottom: 1px solid var(--gray-5);
+            z-index: 100;
+        }
+
+        .back-btn {
+            background: none;
+            border: none;
+            padding: 10px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            color: var(--black);
+            transition: background 0.2s;
+        }
+
+        .back-btn:hover {
+            background: var(--gray-6);
+        }
+
+        .title {
+            font-size: 18px;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+        }
+
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 24px 16px 80px;
+            display: flex;
+            flex-direction: column;
+            gap: 32px;
+        }
+
+        .poster-item {
+            width: 100%;
+            background: var(--white);
+            border-radius: 16px;
+            overflow: hidden;
+            border: 1px solid var(--gray-5);
+            box-shadow: 0 4px 24px rgba(0, 0, 0, 0.06);
+        }
+
+        .poster-img {
+            width: 100%;
+            display: block;
+            background: var(--gray-6);
+            aspect-ratio: 1;
+            object-fit: cover;
+        }
+
+        .poster-footer {
+            padding: 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-top: 1px solid var(--gray-5);
+        }
+
+        .poster-info {
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--gray-3);
+        }
+
+        .download-btn {
+            padding: 10px 18px;
+            font-size: 14px;
+            font-weight: 600;
+            background: var(--black);
+            color: var(--white);
+            border: none;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+
+        .download-btn:active {
+            opacity: 0.7;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: var(--gray-4);
+        }
+
+        /* Animation */
+        .poster-item {
+            animation: fadeInUp 0.5s ease-out forwards;
+            opacity: 0;
+            transform: translateY(20px);
+        }
+
+        @keyframes fadeInUp {
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .poster-item:nth-child(2) {
+            animation-delay: 0.1s;
+        }
+
+        .poster-item:nth-child(3) {
+            animation-delay: 0.2s;
+        }
+    </style>
+</head>
+
+<body>
+
+    <header class="header">
+        <button class="back-btn" onclick="goBack()">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                stroke-linecap="round" stroke-linejoin="round">
+                <line x1="19" y1="12" x2="5" y2="12" />
+                <polyline points="12 19 5 12 12 5" />
+            </svg>
+        </button>
+        <div class="title">Generated Posters</div>
+    </header>
+
+    <main class="container" id="posterContainer">
+        <!-- Posters will be injected here -->
+    </main>
+
+    <script>
+        function goBack() {
+            window.location.href = "/";
+        }
+
+        function downloadImage(url) {
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = "adgpt-poster-" + Date.now() + ".png";
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+        }
+
+        function init() {
+            const container = document.getElementById("posterContainer");
+            const imagesRaw = localStorage.getItem("generated_images");
+
+            if (!imagesRaw) {
+                container.innerHTML = `<div class="empty-state">No posters found. Go back and generate some!</div>`;
+                return;
+            }
+
+            try {
+                const images = JSON.parse(imagesRaw);
+                if (images.length === 0) {
+                    container.innerHTML = `<div class="empty-state">No posters found.</div>`;
+                    return;
+                }
+
+                container.innerHTML = images.map((src, i) => `
+          <div class="poster-item">
+            <img src="${src}" class="poster-img" alt="Ad Poster ${i + 1}" />
+            <div class="poster-footer">
+              <div class="poster-info">Ad Variant ${i + 1}</div>
+              <button class="download-btn" onclick="downloadImage('${src}')">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                  <polyline points="7 10 12 15 17 10" />
+                  <line x1="12" y1="15" x2="12" y2="3" />
+                </svg>
+                Download
+              </button>
+            </div>
+          </div>
+        `).join("");
+
+            } catch (e) {
+                console.error("Error parsing images:", e);
+                container.innerHTML = `<div class="empty-state">Error loading posters.</div>`;
+            }
+        }
+
+        init();
+    </script>
+</body>
+
+</html>

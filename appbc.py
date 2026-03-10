@@ -32,12 +32,22 @@ app.add_middleware(
 
 BASE_DIR = Path(__file__).resolve().parent
 INDEX_FILE = BASE_DIR / "index.html"
+IMAGE_FILE = BASE_DIR / "image.html"
 
 # Serve static files (generated images)
 if not os.path.exists("static/generated"):
     os.makedirs("static/generated", exist_ok=True)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
+
+@app.get("/")
+async def get_index():
+    return FileResponse(INDEX_FILE)
+
+
+@app.get("/image")
+async def get_image_page():
+    return FileResponse(IMAGE_FILE)
 # ── State that mirrors app.py's "ollama" state (renamed to "groq") ──────────
 GROQ_ENABLED = (
     os.getenv("GROQ_ENABLED", "true").strip().lower() in {"1", "true", "yes", "on"}
@@ -512,6 +522,7 @@ async def api_generate_image(request: Request):
     try:
         # Run imagegen.py as a subprocess
         # We pass the prompt as an argument. imagegen.py will print JSON result to stdout.
+        print(f"[BACKEND] Executing imagegen.py with prompt length: {len(prompt)}")
         result = subprocess.run(
             [sys.executable, "imagegen.py", prompt],
             capture_output=True,
@@ -520,12 +531,38 @@ async def api_generate_image(request: Request):
             encoding="utf-8"
         )
         
+        # Print the logs from the script to the terminal for debugging
+        if result.stdout:
+            print("\n--- imagegen.py STDOUT ---")
+            print(result.stdout)
+            print("--------------------------\n")
+        
+        if result.stderr:
+            print("\n--- imagegen.py STDERR ---")
+            print(result.stderr)
+            print("--------------------------\n")
+            
         # Parse the JSON output from the script
-        output_data = json.loads(result.stdout)
+        # Note: imagegen.py might print debug info before the JSON. 
+        # We need to find the line that starts with {"images":
+        output_lines = result.stdout.strip().split("\n")
+        json_str = None
+        for line in output_lines:
+            if line.strip().startswith('{"images":'):
+                json_str = line.strip()
+                break
+        
+        if json_str is None:
+            print("[ERROR] Could not find JSON output in imagegen.py response.")
+            return JSONResponse({"error": "Invalid output format from generator"}, status_code=500)
+
+        output_data = json.loads(json_str)
         return JSONResponse(output_data)
 
     except subprocess.CalledProcessError as e:
-        print(f"Error running imagegen.py: {e.stderr}")
+        print(f"[ERROR] imagegen.py exited with code {e.returncode}")
+        print(f"STDOUT: {e.stdout}")
+        print(f"STDERR: {e.stderr}")
         return JSONResponse({"error": f"Generation failed: {e.stderr}"}, status_code=500)
     except Exception as e:
         print(f"Server error: {str(e)}")

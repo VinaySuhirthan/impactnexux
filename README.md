@@ -1,24 +1,24 @@
-# AdGpt 🚀
+# AdGpt 
 ### Core Product for ImpactNexus
 
 **AdGpt** is a high-performance, multimodal conversational AI platform designed for seamless automated content generation. It intelligently switches between high-speed Cloud inference and privacy-focused local models to deliver a robust, scalable experience.
 
-## 🌟 The Problem
+##  The Problem
 Creating high-quality marketing and creative content (Text, Image, Video) often requires juggling multiple disconnected AI tools, leading to fragmented workflows, high subscription costs, and inconsistent output quality.
 
-## ✅ The Solution
+##  The Solution
 **AdGpt** provides a unified "Next-Gen Creative Suite" that orchestrates:
 - **Multimodal Generation**: Native support for Text, Image, and Video.
 - **Dynamic Brain Switching**: Auto-toggles between Cloud (Groq) for speed and Local (Ollama) for cost/privacy.
 - **Production-Ready API**: A robust FastAPI backend for seamless integration.
 
-## 🛠️ Tech Stack
+##  Tech Stack
 - **Backend**: Python, FastAPI, Uvicorn
 - **AI Inference (Cloud)**: Groq (Llama 3.1), Hugging Face
 - **AI Inference (Local)**: Ollama (Qwen 3.5)
 - **Frontend**: HTML5, Vanilla CSS, JS
 
-## 🔄 Workflow Diagram
+##  Workflow Diagram
 ```mermaid
 graph TD
     A[User Request] --> B{Switch Logic}
@@ -29,7 +29,7 @@ graph TD
     E --> F[Client View]
 ```
 
-## ⚙️ Environment Configuration
+##  Environment Configuration
 Create a `.env` file in the root directory using the following template:
 
 ```env
@@ -52,7 +52,7 @@ BRAIN=False
 ALLOW_GROQ_FALLBACK=False
 ```
 
-## 🚀 Quick Start
+##  Quick Start
 1. **Clone & Setup**:
    ```bash
    git clone [repository-url]

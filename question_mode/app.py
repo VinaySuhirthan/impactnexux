@@ -352,7 +352,7 @@ async def api_generate_image(request: Request):
     data = await request.json()
     prompt = data.get("prompt", "")
     try:
-        result = subprocess.run([sys.executable, str(ROOT_DIR / "imagegen.py"), prompt], capture_output=True, text=True, check=True)
+        result = subprocess.run([sys.executable, str(BASE_DIR / "imagegen.py"), prompt], capture_output=True, text=True, check=True)
         for line in result.stdout.strip().split("\n"):
             if line.strip().startswith('{"images":'): return JSONResponse(json.loads(line.strip()))
         return JSONResponse({"error": "Bad Output"}, status_code=500)
@@ -369,8 +369,8 @@ async def api_generate_video(request: Request):
         return JSONResponse({"error": "No prompt provided"}, status_code=400)
 
     try:
-        # Construct command
-        cmd = [sys.executable, str(ROOT_DIR / "videogen.py"), prompt]
+        # Construct command (now in same directory)
+        cmd = [sys.executable, str(BASE_DIR / "videogen.py"), prompt]
         if image_path:
             abs_img_path = str(ROOT_DIR / image_path) if not os.path.isabs(image_path) else image_path
             cmd.extend(["--images", abs_img_path])

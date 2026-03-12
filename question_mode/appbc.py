@@ -531,9 +531,9 @@ async def api_generate_image(request: Request):
         return JSONResponse({"error": "No prompt provided"}, status_code=400)
 
     try:
-        # Run imagegen.py as a subprocess (at root)
+        # Run imagegen.py as a subprocess (now in the same directory)
         result = subprocess.run(
-            [sys.executable, str(ROOT_DIR / "imagegen.py"), prompt],
+            [sys.executable, str(BASE_DIR / "imagegen.py"), prompt],
             capture_output=True,
             text=True,
             check=True,
@@ -569,8 +569,8 @@ async def api_generate_video(request: Request):
         return JSONResponse({"error": "No prompt provided"}, status_code=400)
 
     try:
-        # Construct command
-        cmd = [sys.executable, str(ROOT_DIR / "videogen.py"), prompt]
+        # Construct command (now in the same directory)
+        cmd = [sys.executable, str(BASE_DIR / "videogen.py"), prompt]
         if image_path:
             # If image_path is absolute, use it; otherwise, relative to ROOT_DIR
             abs_img_path = str(ROOT_DIR / image_path) if not os.path.isabs(image_path) else image_path

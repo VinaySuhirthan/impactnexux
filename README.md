@@ -28,6 +28,11 @@ graph TD
     D --> E
     E --> F[Client View]
 ```
+## Product Interface
+
+
+<img width="1919" height="1010" alt="image" src="https://github.com/user-attachments/assets/90317011-f603-4040-bf5b-9f65a40e85f0" />
+
 
 ##  Environment Configuration
 Create a `.env` file in the root directory using the following template:
